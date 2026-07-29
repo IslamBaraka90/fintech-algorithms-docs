@@ -1,0 +1,69 @@
+name: Build and deploy
+
+# The site is rebuilt from whatever `fintech-algorithms` is currently `latest`
+# on npm. That is why a release does not need to push anything here: the payload
+# ships inside the tarball, unpkg serves it, and the daily rebuild picks it up.
+#
+# There is deliberately no cross-repository dispatch from the library's release
+# workflow — that would need a personal access token, and the same reasoning
+# that keeps the drift guard credential-free applies here. Use "Run workflow"
+# for an immediate rebuild after a release.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to build (e.g. 0.4.0, or latest)"
+        default: "latest"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # No dependencies to install — the generator is plain Node.
+      - name: Build
+        run: node build.mjs --version "${{ inputs.version || 'latest' }}"
+
+      # A partial site is worse than a stale one: refuse to deploy if the topic
+      # pages did not materialise.
+      - name: Sanity-check the output
+        run: |
+          pages=$(find dist -name index.html | wc -l)
+          echo "built $pages pages"
+          if [ "$pages" -lt 100 ]; then
+            echo "::error::only $pages pages built — refusing to deploy"
+            exit 1
+          fi
+          test -f dist/sitemap.xml && test -f dist/llms.txt
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

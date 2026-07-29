@@ -42,6 +42,18 @@ const arg = (flag, fallback) => {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 };
 
+/**
+ * Path prefix for hosts that serve the site below the domain root — a GitHub
+ * Pages *project* URL, for example. Empty for the real deployment at
+ * docs.thefintechbuilder.com, which is why it defaults to empty: delete the
+ * `DOCS_BASE` variable once DNS points here and every link becomes root-relative
+ * again with no code change.
+ *
+ * Canonical URLs deliberately ignore it — they always name the real site.
+ */
+const BASE = (arg("--base", process.env.DOCS_BASE ?? "")).replace(/\/$/, "");
+const u = (p) => `${BASE}${p}`;
+
 // ------------------------------------------------------------ load payload
 
 async function loadPayload() {
@@ -108,12 +120,13 @@ function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd =
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="${esc(canonical)}">
-<link rel="stylesheet" href="/assets/style.css">
+<link rel="stylesheet" href="${u("/assets/style.css")}">
+<script>window.__BASE__=${JSON.stringify(BASE)};</script>
 ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>` : ""}
 </head>
 <body>
 <header class="site">
-  <a class="brand" href="/"><strong>fintech-algorithms</strong> <span>reference</span></a>
+  <a class="brand" href="${u("/")}"><strong>fintech-algorithms</strong> <span>reference</span></a>
   <nav>
     <a href="${ARTICLES}">Articles</a>
     <a href="${NPM}">npm</a>
@@ -129,7 +142,7 @@ ${body}
 <footer>
   <p>Generated from <code>docs.json</code> published with the package. Every worked
   example on this site is a fixture the test suite asserts.</p>
-  <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="/llms.txt">llms.txt</a></p>
+  <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="${u('/llms.txt')}">llms.txt</a></p>
 </footer>
 </body>
 </html>
@@ -172,7 +185,7 @@ function renderHome(payload) {
     ${domains
       .map((d) => {
         const first = payload.topics.find((t) => t.taxonomy.domainId === d.id);
-        return `<a class="card" href="/${domainSlug(first)}/">
+        return `<a class="card" href="${u(`/${domainSlug(first)}/`)}">
       <span class="tag">${esc(d.id)}</span>
       <h3>${esc(d.name)}</h3>
       <p>${plural(d.topicCount, "topic")} · ${families(d.families.length)}</p>
@@ -191,7 +204,7 @@ function renderHome(payload) {
   It is an honest split, not a marketing number.</p>
 </section>
 
-<script src="/assets/search.js" defer></script>
+<script src="${u('/assets/search.js')}" defer></script>
 <script id="search-index" type="application/json">${jsonForScript(
     payload.topics.map((t) => ({
       n: t.name,
@@ -225,7 +238,7 @@ function renderDomain(payload, domain) {
     ${inFamily
       .map(
         (t) => `<li>
-      <a href="/${esc(t.path)}/">${esc(t.name)}</a>
+      <a href="${u(`/${esc(t.path)}/`)}">${esc(t.name)}</a>
       ${badge(t)}
       <code>${esc(t.import.signature)}</code>
     </li>`,
@@ -240,7 +253,7 @@ function renderDomain(payload, domain) {
     title: `${domain.name} — fintech-algorithms`,
     description: `${domain.topicCount} algorithms across ${domain.families.length} families: ${domain.families.map((f) => f.name).join(", ")}.`,
     canonical: `${SITE}/${slug}/`,
-    breadcrumbs: [{ label: "Home", href: "/" }, { label: domain.name }],
+    breadcrumbs: [{ label: "Home", href: u("/") }, { label: domain.name }],
     body: `<h1>${esc(domain.name)}</h1>
 <p class="lede">${plural(domain.topicCount, "algorithm")} · ${families(domain.families.length)} · <code>${esc(domain.id)}</code></p>
 ${familySections}`,
@@ -348,9 +361,9 @@ ${t.references
     description: `${t.name}${t.headline ? `: ${t.headline}` : ""}. Signature, worked example and import path for ${t.import.subpath}.`,
     canonical: `${SITE}/${t.path}/`,
     breadcrumbs: [
-      { label: "Home", href: "/" },
-      { label: t.taxonomy.domain, href: `/${domainSlug(t)}/` },
-      { label: t.taxonomy.family, href: `/${domainSlug(t)}/#${familySlug(t)}` },
+      { label: "Home", href: u("/") },
+      { label: t.taxonomy.domain, href: u(`/${domainSlug(t)}/`) },
+      { label: t.taxonomy.family, href: u(`/${domainSlug(t)}/#${familySlug(t)}`) },
       { label: t.name },
     ],
     jsonLd: {

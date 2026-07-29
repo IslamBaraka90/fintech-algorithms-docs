@@ -14,6 +14,7 @@
 
   var topics = JSON.parse(node.textContent);
   var LIMIT = 12;
+  var BASE = window.__BASE__ || "";
 
   function render(matches, query) {
     if (!matches.length) {
@@ -26,7 +27,7 @@
     list.innerHTML = matches
       .map(function (t) {
         return (
-          '<li><a href="/' + t.p + '/">' + escapeHtml(t.n) +
+          '<li><a href="' + BASE + "/" + t.p + '/">' + escapeHtml(t.n) +
           ' <span class="where">' + escapeHtml(t.d) + " · " + escapeHtml(t.f) +
           (t.v ? " · verified" : "") + "</span></a></li>"
         );

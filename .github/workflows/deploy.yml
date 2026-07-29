@@ -39,7 +39,14 @@ jobs:
           node-version: "22"
 
       # No dependencies to install — the generator is plain Node.
+      #
+      # DOCS_BASE is the repository variable that lets the site work on the
+      # GitHub Pages *project* URL, which serves below the domain root. Delete
+      # the variable once docs.thefintechbuilder.com points here and every link
+      # becomes root-relative again — no code change.
       - name: Build
+        env:
+          DOCS_BASE: ${{ vars.DOCS_BASE }}
         run: node build.mjs --version "${{ inputs.version || 'latest' }}"
 
       # A partial site is worse than a stale one: refuse to deploy if the topic

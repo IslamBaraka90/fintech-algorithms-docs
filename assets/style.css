@@ -93,6 +93,49 @@ figure.code figcaption {
   color: var(--muted);
 }
 
+/* ------------------------------------------------------ syntax highlighting
+
+   Hues are chosen so the two themes read as the same palette at different
+   luminance, and so no pair a reader must distinguish — string vs number,
+   keyword vs function — relies on hue alone at similar lightness. */
+
+.t-comment { color: var(--t-comment); font-style: italic; }
+.t-str, .t-str-key { color: var(--t-str); }
+.t-str-key { font-weight: 500; }
+.t-num { color: var(--t-num); }
+.t-lit { color: var(--t-lit); }
+.t-kw { color: var(--t-kw); font-weight: 500; }
+.t-fn { color: var(--t-fn); }
+.t-type { color: var(--t-type); }
+.t-cmd { color: var(--t-fn); font-weight: 600; }
+.t-flag { color: var(--t-num); }
+.t-punct { color: var(--t-punct); }
+.t-ident { color: inherit; }
+
+:root {
+  --t-comment: #6d7580;
+  --t-str: #0a6b52;
+  --t-num: #a1500b;
+  --t-lit: #8a2d8a;
+  --t-kw: #9127a0;
+  --t-fn: #0a58c8;
+  --t-type: #0b6a86;
+  --t-punct: #79828d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --t-comment: #7b8794;
+    --t-str: #6fd1a8;
+    --t-num: #e0a367;
+    --t-lit: #d98ce0;
+    --t-kw: #d78be8;
+    --t-fn: #7fb0ff;
+    --t-type: #6ec8d8;
+    --t-punct: #8b95a1;
+  }
+}
+
 /* ---------------------------------------------------------------- chrome */
 
 header.site { border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; }

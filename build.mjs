@@ -20,8 +20,8 @@
  *   import   fintech-algorithms/technical-indicators/trend-smoothing/sma
  *
  * Usage:
- *   node build.mjs                       # latest from unpkg
- *   node build.mjs --version 0.5.0       # a specific release
+ *   node build.mjs                       # current payload from the package repo
+ *   node build.mjs --version 0.9.0       # docs for a specific published release
  *   node build.mjs --payload ../path/docs.json
  */
 
@@ -29,6 +29,7 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync, rmSync, ex
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { markdown, title as mdTitle } from "./lib/markdown.mjs";
+import { highlight } from "./lib/highlight.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, "dist");
@@ -60,17 +61,29 @@ async function loadPayload() {
     console.log(`payload: ${local}`);
     return JSON.parse(readFileSync(resolve(local), "utf8"));
   }
-  const version = arg("--version", "latest");
+  const version = arg("--version", null);
 
-  // Two CDNs, both serving the same npm tarball. unpkg has returned a 500 on
-  // `@latest` mid-deploy; that is a CDN hiccup rather than a missing payload, so
-  // it is worth a retry and a second source. What is *not* worth doing is
-  // falling back to a cached copy — a silently stale site is worse than a failed
-  // deploy, so exhausting every source is still a hard error.
-  const sources = [
-    `https://unpkg.com/fintech-algorithms@${version}/docs.json`,
-    `https://cdn.jsdelivr.net/npm/fintech-algorithms@${version}/docs.json`,
-  ];
+  /*
+   * Default source is the package repository's `main`, not npm.
+   *
+   * Building from `unpkg@latest` made *publishing* the delivery mechanism for
+   * documentation: every doc change needed a release, which burned six version
+   * numbers in a day for changes that touched no code a consumer runs. The
+   * payload is committed to a public repository, so reading it there decouples
+   * the two entirely — docs update on push, releases stay for actual releases.
+   *
+   * `--version 0.9.0` still builds the docs for a specific published release
+   * from the tarball, which is the one thing that genuinely needs npm.
+   */
+  const sources = version
+    ? [
+        `https://unpkg.com/fintech-algorithms@${version}/docs.json`,
+        `https://cdn.jsdelivr.net/npm/fintech-algorithms@${version}/docs.json`,
+      ]
+    : [
+        "https://raw.githubusercontent.com/IslamBaraka90/Fintech-Algorithms-Library/main/docs.json",
+        "https://cdn.jsdelivr.net/gh/IslamBaraka90/Fintech-Algorithms-Library@main/docs.json",
+      ];
 
   const failures = [];
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -133,10 +146,15 @@ const familySlug = (t) => t.path.split("/")[1];
 const families = (n) => `${n} ${n === 1 ? "family" : "families"}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-const codeBlock = (label, body, cls = "") =>
-  `<figure class="code ${cls}">${label ? `<figcaption>${esc(label)}</figcaption>` : ""}<pre><code>${esc(
-    body,
-  )}</code></pre></figure>`;
+/**
+ * `label` names the block for the reader — a parameter name, or the language.
+ * `lang` drives highlighting and is separate, because the two are usually
+ * different: the input block for `values` is labelled `values` and is JSON.
+ */
+const codeBlock = (label, body, lang = null) =>
+  `<figure class="code">${label ? `<figcaption>${esc(label)}</figcaption>` : ""}<pre><code${
+    lang ? ` class="lang-${esc(lang)}"` : ""
+  }>${highlight(body, lang)}</code></pre></figure>`;
 
 // -------------------------------------------------------------- page shell
 
@@ -382,7 +400,7 @@ the calculation through by hand.</p>
   const inputs = ex.args
     .map((a, i) => {
       const name = params[i] ?? `argument ${i + 1}`;
-      return `${codeBlock(name, pretty(a.value))}${elisionNote(a.elided)}`;
+      return `${codeBlock(name, pretty(a.value), "json")}${elisionNote(a.elided)}`;
     })
     .join("\n");
 
@@ -395,11 +413,11 @@ the calculation through by hand.</p>
 ${inputs}
 
 <h3>Call</h3>
-${codeBlock(null, `${t.import.entry}(${params.join(", ")})`)}
+${codeBlock(null, `${t.import.entry}(${params.join(", ")})`, "ts")}
 
 <h3>Returns</h3>
 <p class="shape">${esc(ex.outputShape)}</p>
-${codeBlock(null, pretty(ex.output))}
+${codeBlock(null, pretty(ex.output), "json")}
 ${elisionNote(ex.outputElided)}`;
 }
 
@@ -412,11 +430,11 @@ function renderTopic(payload, t) {
   if (t.headline) parts.push(`<p class="lede">${esc(t.headline)}</p>`);
 
   parts.push(`<h2>Install and import</h2>
-${codeBlock("bash", "npm install fintech-algorithms")}
-${codeBlock("ts", `import { ${t.import.entry} } from "${t.import.subpath}";`)}`);
+${codeBlock("bash", "npm install fintech-algorithms", "bash")}
+${codeBlock("ts", `import { ${t.import.entry} } from "${t.import.subpath}";`, "ts")}`);
 
   parts.push(`<h2>Signature</h2>
-${codeBlock(null, t.import.signature)}`);
+${codeBlock(null, t.import.signature, "ts")}`);
 
   if (t.api) {
     if (t.api.summary) parts.push(`<p>${md(t.api.summary)}</p>`);

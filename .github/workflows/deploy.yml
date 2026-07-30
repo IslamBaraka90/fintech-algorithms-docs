@@ -1,13 +1,14 @@
 name: Build and deploy
 
-# The site is rebuilt from whatever `fintech-algorithms` is currently `latest`
-# on npm. That is why a release does not need to push anything here: the payload
-# ships inside the tarball, unpkg serves it, and the daily rebuild picks it up.
+# The site rebuilds from `docs.json` on the package repository's main branch,
+# not from a published release. Documentation changes therefore never require an
+# npm publish — that coupling is what turned six doc edits into six burned
+# version numbers.
 #
-# There is deliberately no cross-repository dispatch from the library's release
-# workflow — that would need a personal access token, and the same reasoning
-# that keeps the drift guard credential-free applies here. Use "Run workflow"
-# for an immediate rebuild after a release.
+# There is deliberately no cross-repository dispatch from the library — that
+# would need a personal access token, and the same reasoning that keeps the
+# drift guard credential-free applies here. The daily schedule picks up merged
+# changes; "Run workflow" is the immediate path.
 on:
   push:
     branches: [main]
@@ -16,8 +17,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Package version to build (e.g. 0.4.0, or latest)"
-        default: "latest"
+        description: "Published version to build docs for. Leave empty for the current main."
+        default: ""
 
 permissions:
   contents: read
@@ -47,7 +48,12 @@ jobs:
       - name: Build
         env:
           DOCS_BASE: ${{ vars.DOCS_BASE }}
-        run: node build.mjs --version "${{ inputs.version || 'latest' }}"
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            node build.mjs --version "${{ inputs.version }}"
+          else
+            node build.mjs
+          fi
 
       # A partial site is worse than a stale one: refuse to deploy if the topic
       # pages did not materialise.

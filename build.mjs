@@ -83,6 +83,13 @@ const esc = (s) =>
 /** `</script>` inside embedded JSON would close the tag early. */
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
 
+/**
+ * Contract prose is authored in the catalog with backtick code spans — the only
+ * markup allowed there. Escape first, then convert, so the text can never inject
+ * markup of its own.
+ */
+const md = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+
 const write = (relPath, contents) => {
   const full = join(DIST, relPath);
   mkdirSync(dirname(full), { recursive: true });
@@ -279,6 +286,66 @@ function renderTopic(payload, t) {
 
   parts.push(`<h2>Signature</h2>
 <pre><code>${esc(t.import.signature)}</code></pre>`);
+
+  // The declared contract, where the catalog carries one. `sync` refuses to emit
+  // a payload whose declared parameters disagree with the implementation, so
+  // anything rendered here is guaranteed to describe the real function.
+  if (t.api) {
+    if (t.api.summary) parts.push(`<p>${md(t.api.summary)}</p>`);
+
+    if (t.api.params.length) {
+      parts.push(`<h3>Parameters</h3>
+<table class="params">
+  <thead><tr><th>Name</th><th>Type</th><th>Notes</th></tr></thead>
+  <tbody>
+${t.api.params
+  .map((p) => {
+    const notes = [
+      p.description ? md(p.description) : "",
+      p.constraints
+        ? `<span class="constraint">${Object.entries(p.constraints)
+            .map(([k, v]) => `${esc(k)}: ${esc(v)}`)
+            .join(" · ")}</span>`
+        : "",
+      p.nulls ? `<span class="constraint">nulls: ${esc(p.nulls)}</span>` : "",
+      p.required === false ? `<span class="constraint">optional</span>` : "",
+    ]
+      .filter(Boolean)
+      .join("<br>");
+    return `    <tr><td><code>${esc(p.name)}</code></td><td><code>${esc(p.type ?? "—")}</code></td><td>${notes}</td></tr>`;
+  })
+  .join("\n")}
+  </tbody>
+</table>`);
+    }
+
+    if (t.api.returns) {
+      parts.push(`<h3>Returns</h3>
+<p><code>${esc(t.api.returns.type ?? "—")}</code>${
+        t.api.returns.length ? ` · length ${esc(t.api.returns.length)}` : ""
+      }</p>${t.api.returns.description ? `\n<p>${md(t.api.returns.description)}</p>` : ""}`);
+    }
+
+    if (t.api.warmup) {
+      parts.push(`<h3>Warm-up</h3>
+<p>The first <code>${esc(t.api.warmup.count)}</code> positions are
+<code>${esc(t.api.warmup.value)}</code>.${
+        t.api.warmup.note ? ` ${md(t.api.warmup.note)}` : ""
+      }</p>`);
+    }
+
+    if (t.api.errors?.length) {
+      parts.push(`<h3>Errors</h3>
+<ul class="errors">
+${t.api.errors.map((e) => `  <li>When ${md(e.when)} — ${md(e.behaviour)}</li>`).join("\n")}
+</ul>`);
+    }
+
+    if (t.api.complexity) {
+      parts.push(`<p class="hint">Complexity: time <code>${esc(t.api.complexity.time)}</code>,
+      space <code>${esc(t.api.complexity.space)}</code>.</p>`);
+    }
+  }
   if (t.import.exports.length > 1) {
     parts.push(`<p class="hint">This module also exports
     ${t.import.exports.filter((e) => e !== t.import.entry).map((e) => `<code>${esc(e)}</code>`).join(", ")}.

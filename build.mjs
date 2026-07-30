@@ -61,12 +61,34 @@ async function loadPayload() {
     return JSON.parse(readFileSync(resolve(local), "utf8"));
   }
   const version = arg("--version", "latest");
-  const url = `https://unpkg.com/fintech-algorithms@${version}/docs.json`;
-  console.log(`payload: ${url}`);
-  const res = await fetch(url);
-  // A partial site is worse than no deploy: fail loudly rather than fall back.
-  if (!res.ok) throw new Error(`payload fetch failed: ${res.status} ${res.statusText}`);
-  return res.json();
+
+  // Two CDNs, both serving the same npm tarball. unpkg has returned a 500 on
+  // `@latest` mid-deploy; that is a CDN hiccup rather than a missing payload, so
+  // it is worth a retry and a second source. What is *not* worth doing is
+  // falling back to a cached copy — a silently stale site is worse than a failed
+  // deploy, so exhausting every source is still a hard error.
+  const sources = [
+    `https://unpkg.com/fintech-algorithms@${version}/docs.json`,
+    `https://cdn.jsdelivr.net/npm/fintech-algorithms@${version}/docs.json`,
+  ];
+
+  const failures = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    for (const url of sources) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          console.log(`payload: ${url}`);
+          return res.json();
+        }
+        failures.push(`${res.status} ${res.statusText} — ${url}`);
+      } catch (e) {
+        failures.push(`${e.message} — ${url}`);
+      }
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 5000));
+  }
+  throw new Error(`payload fetch failed from every source:\n  ${failures.join("\n  ")}`);
 }
 
 // ------------------------------------------------------------------ helpers

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 /**
- * Build the reference site for `fintech-algorithms` from its published
- * `docs.json` payload.
+ * Build the reference site for `fintech-algorithms`.
  *
- * The payload is the only input. It ships inside the npm tarball, so every
- * released version is permanently addressable at
- * `unpkg.com/fintech-algorithms@x.y.z/docs.json` — this site therefore needs no
- * access to the private catalog, no build coupling to the library, and no
- * cross-repository token.
+ * Two inputs, deliberately separate:
+ *
+ *   docs.json     the generated reference payload, shipped inside the npm
+ *                 tarball and fetched from unpkg — 187 topics, their contracts
+ *                 and their executed worked examples
+ *   content/*.md  hand-written guides, which are prose and belong in a file
+ *                 rather than in a generator
+ *
+ * Because the payload travels with the package, every released version is
+ * permanently addressable and this site needs no access to the private catalog.
  *
  * URLs mirror the import path exactly, which is the library's central idea:
  *
@@ -15,19 +19,16 @@
  *   docs     docs.thefintechbuilder.com/technical-indicators/trend-smoothing/sma/
  *   import   fintech-algorithms/technical-indicators/trend-smoothing/sma
  *
- * Deliberately dependency-free. 187 near-identical documents generated from one
- * JSON file do not need a framework, and a docs site for a zero-dependency
- * library should not carry a 300 MB toolchain of its own.
- *
  * Usage:
  *   node build.mjs                       # latest from unpkg
- *   node build.mjs --version 0.4.0       # a specific release
+ *   node build.mjs --version 0.5.0       # a specific release
  *   node build.mjs --payload ../path/docs.json
  */
 
-import { mkdirSync, writeFileSync, readFileSync, cpSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync, rmSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { markdown, title as mdTitle } from "./lib/markdown.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, "dist");
@@ -43,15 +44,12 @@ const arg = (flag, fallback) => {
 };
 
 /**
- * Path prefix for hosts that serve the site below the domain root — a GitHub
- * Pages *project* URL, for example. Empty for the real deployment at
- * docs.thefintechbuilder.com, which is why it defaults to empty: delete the
- * `DOCS_BASE` variable once DNS points here and every link becomes root-relative
- * again with no code change.
- *
- * Canonical URLs deliberately ignore it — they always name the real site.
+ * Path prefix for hosts that serve below the domain root — a GitHub Pages
+ * *project* URL. Empty for the real deployment, so deleting the `DOCS_BASE`
+ * variable once DNS points here restores root-relative links with no code
+ * change. Canonical URLs ignore it and always name the real site.
  */
-const BASE = (arg("--base", process.env.DOCS_BASE ?? "")).replace(/\/$/, "");
+const BASE = arg("--base", process.env.DOCS_BASE ?? "").replace(/\/$/, "");
 const u = (p) => `${BASE}${p}`;
 
 // ------------------------------------------------------------ load payload
@@ -83,11 +81,7 @@ const esc = (s) =>
 /** `</script>` inside embedded JSON would close the tag early. */
 const jsonForScript = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
 
-/**
- * Contract prose is authored in the catalog with backtick code spans — the only
- * markup allowed there. Escape first, then convert, so the text can never inject
- * markup of its own.
- */
+/** Authored prose may use backtick code spans and nothing else. */
 const md = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
 
 const write = (relPath, contents) => {
@@ -96,25 +90,41 @@ const write = (relPath, contents) => {
   writeFileSync(full, contents, "utf8");
 };
 
+/**
+ * JSON for display: short primitive arrays stay on one line.
+ *
+ * `JSON.stringify(undefined)` returns undefined, not a string — which happens
+ * whenever a captured call omitted an optional argument.
+ */
 const pretty = (v) => {
-  const s = JSON.stringify(v, null, 2);
-  // Collapse short arrays of primitives onto one line — a 6-element price
-  // series printed over 8 lines is noise, not clarity.
-  return s.replace(/\[\n\s+((?:[^[\]{}]|\n)*?)\n\s+\]/g, (m, body) => {
+  const s = JSON.stringify(v, null, 2) ?? "undefined";
+  // `\s*` rather than `\s+` before the bracket: a root-level array closes at
+  // column 0, which is exactly the common case of a short numeric series.
+  return s.replace(/\[\n\s+((?:[^[\]{}]|\n)*?)\n\s*\]/g, (m, body) => {
     const flat = body.split("\n").map((l) => l.trim()).join(" ");
-    return flat.length <= 80 ? `[${flat}]` : m;
+    return flat.length <= 76 ? `[${flat}]` : m;
   });
 };
 
 const domainSlug = (t) => t.path.split("/")[0];
 const familySlug = (t) => t.path.split("/")[1];
-
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : word.endsWith("y") ? "" : "s"}`;
 const families = (n) => `${n} ${n === 1 ? "family" : "families"}`;
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+const codeBlock = (label, body, cls = "") =>
+  `<figure class="code ${cls}">${label ? `<figcaption>${esc(label)}</figcaption>` : ""}<pre><code>${esc(
+    body,
+  )}</code></pre></figure>`;
 
 // -------------------------------------------------------------- page shell
 
-function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd = null }) {
+const NAV = [
+  { label: "Quick start", href: "/start/" },
+  { label: "Guides", href: "/guides/" },
+  { label: "Reference", href: "/#domains" },
+];
+
+function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd = null, mermaid = false, wide = false }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -127,30 +137,58 @@ function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd =
 <meta property="og:description" content="${esc(description)}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="${esc(canonical)}">
+<meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="${u("/assets/style.css")}">
 <script>window.__BASE__=${JSON.stringify(BASE)};</script>
 ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>` : ""}
 </head>
-<body>
+<body${wide ? ' class="wide"' : ""}>
+<a class="skip" href="#main">Skip to content</a>
 <header class="site">
-  <a class="brand" href="${u("/")}"><strong>fintech-algorithms</strong> <span>reference</span></a>
-  <nav>
-    <a href="${ARTICLES}">Articles</a>
-    <a href="${NPM}">npm</a>
-    <a href="${GITHUB}">GitHub</a>
-  </nav>
+  <div class="bar">
+    <a class="brand" href="${u("/")}">fintech<span>-algorithms</span></a>
+    <nav class="primary">${NAV.map((n) => `<a href="${u(n.href)}">${esc(n.label)}</a>`).join("")}</nav>
+    <nav class="external">
+      <a href="${ARTICLES}">Articles</a>
+      <a href="${NPM}">npm</a>
+      <a href="${GITHUB}">GitHub</a>
+    </nav>
+  </div>
 </header>
-${breadcrumbs.length ? `<nav class="crumbs">${breadcrumbs
-    .map((c) => (c.href ? `<a href="${esc(c.href)}">${esc(c.label)}</a>` : `<span>${esc(c.label)}</span>`))
-    .join('<i>/</i>')}</nav>` : ""}
-<main>
+${
+  breadcrumbs.length
+    ? `<nav class="crumbs" aria-label="Breadcrumb"><div class="inner">${breadcrumbs
+        .map((c) => (c.href ? `<a href="${esc(c.href)}">${esc(c.label)}</a>` : `<span>${esc(c.label)}</span>`))
+        .join('<i aria-hidden="true">/</i>')}</div></nav>`
+    : ""
+}
+<main id="main">
 ${body}
 </main>
 <footer>
-  <p>Generated from <code>docs.json</code> published with the package. Every worked
-  example on this site is a fixture the test suite asserts.</p>
-  <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="${u('/llms.txt')}">llms.txt</a></p>
+  <div class="inner">
+    <p>Generated from the <code>docs.json</code> payload published with the package.
+    No example on this site was written by hand — every one is the output of running the code.</p>
+    <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="${u("/start/")}">Quick start</a> · <a href="${u(
+      "/guides/verification/",
+    )}">What “verified” means</a> · <a href="${u("/llms.txt")}">llms.txt</a></p>
+  </div>
 </footer>
+${
+  mermaid
+    ? `<script type="module">
+// Rendered from the diagram source carried in the payload. If the CDN is
+// unreachable the source stays visible in its <details>, so nothing is lost.
+try {
+  const { default: mermaid } = await import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs");
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "neutral", securityLevel: "strict" });
+  await mermaid.run({ querySelector: ".mermaid" });
+  document.querySelectorAll(".flow").forEach((d) => { d.open = true; d.classList.add("rendered"); });
+} catch {}
+</script>`
+    : ""
+}
 </body>
 </html>
 `;
@@ -158,8 +196,8 @@ ${body}
 
 const badge = (t) =>
   t.verification.tier === "verified"
-    ? `<span class="badge verified" title="Arithmetic asserted against the article's published worked example">verified</span>`
-    : `<span class="badge contract" title="Module loads and exposes a callable entry point; its arithmetic is not asserted here">contract</span>`;
+    ? `<span class="badge verified" title="Arithmetic asserted against the worked example published in the article">verified</span>`
+    : `<span class="badge contract" title="Loads and exposes a callable entry point; its arithmetic is not asserted here">contract</span>`;
 
 // --------------------------------------------------------------- home page
 
@@ -167,26 +205,29 @@ function renderHome(payload) {
   const { counts, domains } = payload;
   const body = `
 <section class="hero">
+  <p class="eyebrow">Reference · v${esc(payload.package.version)}</p>
   <h1>The algorithms behind market data, corporate actions, indices and breadth</h1>
-  <p class="lede">Reference documentation for <strong>${counts.topics} zero-dependency
-  TypeScript implementations</strong>. Import paths mirror article URLs, so a path you
-  know on one surface works on all three.</p>
-  <pre class="install"><code>npm install fintech-algorithms</code></pre>
+  <p class="lede">${counts.topics} zero-dependency TypeScript implementations. Plain arrays
+  and objects in, plain values out — no client to construct, no API key, no provider baked in.</p>
+  <div class="cta-row">
+    <a class="button" href="${u("/start/")}">Quick start</a>
+    <a class="button ghost" href="${u("/guides/charting/")}">Plot one on a chart</a>
+  </div>
   <dl class="stats">
     <div><dt>Topics</dt><dd>${counts.topics}</dd></div>
     <div><dt>Domains</dt><dd>${counts.domains}</dd></div>
-    <div><dt>Families</dt><dd>${counts.families}</dd></div>
+    <div><dt>Worked examples</dt><dd>${counts.withExample}</dd></div>
     <div><dt>Verified</dt><dd>${counts.verified}</dd></div>
   </dl>
 </section>
 
 <section class="search">
   <label for="q">Search ${counts.topics} algorithms</label>
-  <input id="q" type="search" placeholder="split adjustment, McClellan, divisor, ATR…" autocomplete="off">
+  <input id="q" type="search" placeholder="split adjustment · McClellan · divisor · ATR · Kalman" autocomplete="off" spellcheck="false">
   <ul id="results" hidden></ul>
 </section>
 
-<section>
+<section id="domains">
   <h2>Browse by domain</h2>
   <div class="grid">
     ${domains
@@ -202,16 +243,24 @@ function renderHome(payload) {
   </div>
 </section>
 
-<section class="note">
-  <h2>What “verified” means here</h2>
-  <p><strong>${counts.verified} of ${counts.topics}</strong> topics have their arithmetic
-  asserted against the worked example published in their article — the package, the article
-  and the standalone repository agree on the numbers. The rest are proven to load and expose
-  a callable entry point, but their output is not asserted. Each page states which it is.
-  It is an honest split, not a marketing number.</p>
+<section class="panels">
+  <article class="panel">
+    <h2>Every example is executed</h2>
+    <p>${counts.withExample} of ${counts.topics} pages show a worked example, and not one of
+    them was typed by hand. Each is either the fixture the test suite asserts, or the real
+    return value captured by running the function on the input its own test provides.</p>
+    <p><a href="${u("/guides/verification/")}">How far to trust each page →</a></p>
+  </article>
+  <article class="panel">
+    <h2>Bring your own data</h2>
+    <p>No HTTP client, no vendor SDK, no <code>node:fs</code>, zero runtime dependencies.
+    You write one adapter from your provider's payload and own it; when the vendor changes
+    their API you edit that file and the algorithms never move.</p>
+    <p><a href="${u("/guides/data-providers/")}">Wiring up a provider →</a></p>
+  </article>
 </section>
 
-<script src="${u('/assets/search.js')}" defer></script>
+<script src="${u("/assets/search.js")}" defer></script>
 <script id="search-index" type="application/json">${jsonForScript(
     payload.topics.map((t) => ({
       n: t.name,
@@ -227,6 +276,7 @@ function renderHome(payload) {
     description: `Reference for ${counts.topics} zero-dependency TypeScript implementations of market-data, corporate-action, index, breadth and technical-indicator algorithms.`,
     canonical: `${SITE}/`,
     body,
+    wide: true,
   });
 }
 
@@ -236,7 +286,7 @@ function renderDomain(payload, domain) {
   const topics = payload.topics.filter((t) => t.taxonomy.domainId === domain.id);
   const slug = domainSlug(topics[0]);
 
-  const familySections = domain.families
+  const sections = domain.families
     .map((f) => {
       const inFamily = topics.filter((t) => t.taxonomy.familyId === f.id);
       return `<section class="family">
@@ -245,9 +295,9 @@ function renderDomain(payload, domain) {
     ${inFamily
       .map(
         (t) => `<li>
-      <a href="${u(`/${esc(t.path)}/`)}">${esc(t.name)}</a>
+      <a class="name" href="${u(`/${esc(t.path)}/`)}">${esc(t.name)}</a>
       ${badge(t)}
-      <code>${esc(t.import.signature)}</code>
+      <code class="sig">${esc(t.import.signature)}</code>
     </li>`,
       )
       .join("\n    ")}
@@ -258,13 +308,77 @@ function renderDomain(payload, domain) {
 
   return shell({
     title: `${domain.name} — fintech-algorithms`,
-    description: `${domain.topicCount} algorithms across ${domain.families.length} families: ${domain.families.map((f) => f.name).join(", ")}.`,
+    description: `${domain.topicCount} algorithms across ${domain.families.length} families: ${domain.families
+      .map((f) => f.name)
+      .join(", ")}.`,
     canonical: `${SITE}/${slug}/`,
-    breadcrumbs: [{ label: "Home", href: u("/") }, { label: domain.name }],
+    breadcrumbs: [{ label: "Reference", href: u("/") }, { label: domain.name }],
     body: `<h1>${esc(domain.name)}</h1>
-<p class="lede">${plural(domain.topicCount, "algorithm")} · ${families(domain.families.length)} · <code>${esc(domain.id)}</code></p>
-${familySections}`,
+<p class="lede">${plural(domain.topicCount, "algorithm")} · ${families(domain.families.length)} · <code>${esc(
+      domain.id,
+    )}</code></p>
+${sections}`,
   });
+}
+
+// ------------------------------------------------------- example rendering
+
+const ORIGIN = {
+  fixture: {
+    label: "verified",
+    note: "This is the worked example published in the article, replayed by the test suite on every run. The output cannot drift.",
+  },
+  executed: {
+    label: "executed",
+    note: "Captured by running this function on the input its own test provides. Real output of real code — but not asserted against a published figure.",
+  },
+  derived: {
+    label: "executed",
+    note: "This entry is a thin wrapper its test never calls directly, so it was invoked with the arguments its shared implementation received. Real output, not asserted against a published figure.",
+  },
+};
+
+function elisionNote(elided) {
+  if (!elided) return "";
+  return elided.kind === "array"
+    ? `<p class="elision">Showing ${elided.shown} of ${elided.total} elements.</p>`
+    : `<p class="elision">Showing ${elided.shown} of ${elided.total} fields.</p>`;
+}
+
+function renderExample(t) {
+  const ex = t.example;
+  if (!ex) {
+    return `<h2>Worked example</h2>
+<p class="hint">No runnable example is available for this topic yet. The article works
+the calculation through by hand.</p>
+<p><a class="cta" href="${esc(t.links.article)}">Read the worked example →</a></p>`;
+  }
+
+  const origin = ORIGIN[ex.origin] ?? ORIGIN.executed;
+  const params = t.import.params;
+
+  const inputs = ex.args
+    .map((a, i) => {
+      const name = params[i] ?? `argument ${i + 1}`;
+      return `${codeBlock(name, pretty(a.value))}${elisionNote(a.elided)}`;
+    })
+    .join("\n");
+
+  return `<h2>Worked example</h2>
+<p class="origin ${esc(ex.origin)}"><span class="badge ${
+    ex.verified ? "verified" : "executed"
+  }">${esc(origin.label)}</span> ${esc(origin.note)}</p>
+
+<h3>Input</h3>
+${inputs}
+
+<h3>Call</h3>
+${codeBlock(null, `${t.import.entry}(${params.join(", ")})`)}
+
+<h3>Returns</h3>
+<p class="shape">${esc(ex.outputShape)}</p>
+${codeBlock(null, pretty(ex.output))}
+${elisionNote(ex.outputElided)}`;
 }
 
 // -------------------------------------------------------------- topic page
@@ -274,28 +388,20 @@ function renderTopic(payload, t) {
 
   parts.push(`<h1>${esc(t.name)}</h1>`);
   if (t.headline) parts.push(`<p class="lede">${esc(t.headline)}</p>`);
-  parts.push(`<p class="meta">${badge(t)}
-  <code>${esc(t.id)}</code>
-  <span>${esc(t.taxonomy.family)}</span>
-  <span>shape: <code>${esc(t.import.archetype)}</code></span>
-  <span>difficulty ${t.taxonomy.difficulty}</span></p>`);
 
   parts.push(`<h2>Install and import</h2>
-<pre><code>npm install fintech-algorithms</code></pre>
-<pre><code>import { ${esc(t.import.entry)} } from "${esc(t.import.subpath)}";</code></pre>`);
+${codeBlock("bash", "npm install fintech-algorithms")}
+${codeBlock("ts", `import { ${t.import.entry} } from "${t.import.subpath}";`)}`);
 
   parts.push(`<h2>Signature</h2>
-<pre><code>${esc(t.import.signature)}</code></pre>`);
+${codeBlock(null, t.import.signature)}`);
 
-  // The declared contract, where the catalog carries one. `sync` refuses to emit
-  // a payload whose declared parameters disagree with the implementation, so
-  // anything rendered here is guaranteed to describe the real function.
   if (t.api) {
     if (t.api.summary) parts.push(`<p>${md(t.api.summary)}</p>`);
 
     if (t.api.params.length) {
       parts.push(`<h3>Parameters</h3>
-<table class="params">
+<div class="table-scroll"><table class="params">
   <thead><tr><th>Name</th><th>Type</th><th>Notes</th></tr></thead>
   <tbody>
 ${t.api.params
@@ -312,11 +418,13 @@ ${t.api.params
     ]
       .filter(Boolean)
       .join("<br>");
-    return `    <tr><td><code>${esc(p.name)}</code></td><td><code>${esc(p.type ?? "—")}</code></td><td>${notes}</td></tr>`;
+    return `    <tr><td><code>${esc(p.name)}</code></td><td><code>${esc(
+      p.type ?? "—",
+    )}</code></td><td>${notes}</td></tr>`;
   })
   .join("\n")}
   </tbody>
-</table>`);
+</table></div>`);
     }
 
     if (t.api.returns) {
@@ -328,10 +436,9 @@ ${t.api.params
 
     if (t.api.warmup) {
       parts.push(`<h3>Warm-up</h3>
-<p>The first <code>${esc(t.api.warmup.count)}</code> positions are
-<code>${esc(t.api.warmup.value)}</code>.${
-        t.api.warmup.note ? ` ${md(t.api.warmup.note)}` : ""
-      }</p>`);
+<p>The first <code>${esc(t.api.warmup.count)}</code> positions are <code>${esc(
+        t.api.warmup.value,
+      )}</code>.${t.api.warmup.note ? ` ${md(t.api.warmup.note)}` : ""}</p>`);
     }
 
     if (t.api.errors?.length) {
@@ -346,27 +453,18 @@ ${t.api.errors.map((e) => `  <li>When ${md(e.when)} — ${md(e.behaviour)}</li>`
       space <code>${esc(t.api.complexity.space)}</code>.</p>`);
     }
   }
-  if (t.import.exports.length > 1) {
-    parts.push(`<p class="hint">This module also exports
-    ${t.import.exports.filter((e) => e !== t.import.entry).map((e) => `<code>${esc(e)}</code>`).join(", ")}.
-    Every module additionally exports <code>run</code> as an alias of its primary function,
-    and a <code>meta</code> object.</p>`);
-  }
 
-  if (t.example) {
-    parts.push(`<h2>Worked example</h2>
-<p class="hint">Asserted by the test suite against the numbers published in the article —
-this output cannot drift.</p>
-<pre><code>${esc(t.example.call)}</code></pre>
-<p class="label">Returns</p>
-<pre><code>${esc(pretty(t.example.expected))}</code></pre>`);
-  } else if (t.verification.tier === "verified") {
-    parts.push(`<h2>Worked example</h2>
-<p class="hint">This topic is verified against a ${
-      t.verification.via === "row-fixture" ? "multi-row" : "multi-scenario"
-    } fixture — hundreds of observations, correct to assert but too long to print here.
-    The article walks the numbers through by hand.</p>
-<p><a class="cta" href="${esc(t.links.article)}">Read the worked example →</a></p>`);
+  parts.push(renderExample(t));
+
+  if (t.import.exports.length > 1) {
+    parts.push(`<h2>Other exports</h2>
+<p>This module also exports
+${t.import.exports
+  .filter((e) => e !== t.import.entry)
+  .map((e) => `<code>${esc(e)}</code>`)
+  .join(", ")}. Every module additionally exports <code>run</code> as an alias of its
+primary function, and a <code>meta</code> object carrying its catalog id, domain, family,
+shape and article URL.</p>`);
   }
 
   if (t.assets.diagrams.length) {
@@ -374,7 +472,7 @@ this output cannot drift.</p>
 ${t.assets.diagrams
   .map(
     (d) =>
-      `<figure><img loading="lazy" src="${esc(d.url)}" alt="${esc(t.name)} — ${esc(
+      `<figure class="diagram"><img loading="lazy" src="${esc(d.url)}" alt="${esc(t.name)} — ${esc(
         d.file.replace(/\.svg$/, "").replace(/-/g, " "),
       )}"></figure>`,
   )
@@ -382,24 +480,20 @@ ${t.assets.diagrams
   }
 
   if (t.assets.mermaid.length) {
-    // Collapsed: the diagrams above already carry the visual explanation, and a
-    // wall of Mermaid source on every page is noise for most readers. Kept as
-    // source rather than rendered so the site stays self-contained — rendering
-    // would mean pulling a megabyte of JavaScript from a CDN.
     parts.push(`<h2>Calculation flow</h2>
 ${t.assets.mermaid
   .map(
     (m) => `<details class="flow">
-  <summary>${esc(m.caption ?? "Mermaid diagram")}</summary>
-  <pre><code>${esc(m.source)}</code></pre>
+  <summary>${esc(m.caption ?? "Diagram")}</summary>
+  <pre class="mermaid">${esc(m.source)}</pre>
 </details>`,
   )
   .join("\n")}`);
   }
 
-  parts.push(`<h2>Learn how it works</h2>
-<p>This page states the <strong>contract</strong>: how to call it correctly. The article
-explains the <strong>concept</strong>: why it works and where it breaks.</p>
+  parts.push(`<h2>How it works</h2>
+<p>This page states the <strong>contract</strong> — how to call it correctly. The article
+explains the <strong>concept</strong>: why it works, and where it breaks.</p>
 <p><a class="cta" href="${esc(t.links.article)}">Read the article →</a></p>`);
 
   if (t.references.length) {
@@ -416,21 +510,32 @@ ${t.references
 </ul>`);
   }
 
-  parts.push(`<h2>Source</h2>
-<ul class="links">
-  <li><a href="${esc(t.links.source)}">Implementation on GitHub</a></li>
-  ${t.links.repo ? `<li><a href="${esc(t.links.repo)}">Standalone repository</a></li>` : ""}
-  <li><a href="${esc(t.links.npm)}">Package on npm</a></li>
-</ul>`);
+  const rail = `<aside class="rail">
+  <dl>
+    <dt>Verification</dt><dd>${badge(t)}</dd>
+    <dt>Catalog id</dt><dd><code>${esc(t.id)}</code></dd>
+    <dt>Domain</dt><dd><a href="${u(`/${domainSlug(t)}/`)}">${esc(t.taxonomy.domain)}</a></dd>
+    <dt>Family</dt><dd><a href="${u(`/${domainSlug(t)}/#${familySlug(t)}`)}">${esc(t.taxonomy.family)}</a></dd>
+    <dt>Shape</dt><dd><code>${esc(t.import.archetype)}</code></dd>
+    <dt>Difficulty</dt><dd>${t.taxonomy.difficulty} / 5</dd>
+  </dl>
+  <ul class="links">
+    <li><a href="${esc(t.links.source)}">Source on GitHub</a></li>
+    ${t.links.repo ? `<li><a href="${esc(t.links.repo)}">Standalone repository</a></li>` : ""}
+    <li><a href="${esc(t.links.article)}">Article</a></li>
+    <li><a href="${esc(t.links.npm)}">Package on npm</a></li>
+  </ul>
+</aside>`;
 
   return shell({
     title: `${t.name} — fintech-algorithms`,
-    description: `${t.name}${t.headline ? `: ${t.headline}` : ""}. Signature, worked example and import path for ${t.import.subpath}.`,
+    description: `${t.name}${t.headline ? `: ${t.headline}` : ""}. Signature, parameters, worked example and import path for ${t.import.subpath}.`,
     canonical: `${SITE}/${t.path}/`,
+    mermaid: t.assets.mermaid.length > 0,
+    wide: true,
     breadcrumbs: [
-      { label: "Home", href: u("/") },
+      { label: "Reference", href: u("/") },
       { label: t.taxonomy.domain, href: u(`/${domainSlug(t)}/`) },
-      { label: t.taxonomy.family, href: u(`/${domainSlug(t)}/#${familySlug(t)}`) },
       { label: t.name },
     ],
     jsonLd: {
@@ -442,7 +547,56 @@ ${t.references
       codeRepository: GITHUB,
       url: `${SITE}/${t.path}/`,
     },
-    body: parts.join("\n\n"),
+    body: `<div class="with-rail"><article class="doc">\n${parts.join("\n\n")}\n</article>\n${rail}</div>`,
+  });
+}
+
+// ------------------------------------------------------------------ guides
+
+const GUIDES = [
+  { file: "start.md", path: "start", blurb: "Install, call your first algorithm, and understand nulls and verdicts." },
+  { file: "charting.md", path: "guides/charting", blurb: "Join indicator output to candles without shifting the series." },
+  { file: "data-providers.md", path: "guides/data-providers", blurb: "Write the one adapter you own, and validate at the boundary." },
+  { file: "verification.md", path: "guides/verification", blurb: "What the badges mean and where each example came from." },
+];
+
+function renderGuide(guide, source) {
+  const heading = mdTitle(source);
+  const bodyMd = source.replace(/^#\s+.+$/m, "").trim();
+  const isStart = guide.path === "start";
+  return shell({
+    title: `${heading} — fintech-algorithms`,
+    description: guide.blurb,
+    canonical: `${SITE}/${guide.path}/`,
+    breadcrumbs: isStart
+      ? [{ label: "Reference", href: u("/") }, { label: heading }]
+      : [{ label: "Reference", href: u("/") }, { label: "Guides", href: u("/guides/") }, { label: heading }],
+    body: `<article class="doc prose"><h1>${esc(heading)}</h1>\n${markdown(bodyMd)}</article>`,
+  });
+}
+
+function renderGuideIndex() {
+  const items = GUIDES.filter((g) => g.path !== "start")
+    .map(
+      (g) => `<a class="card" href="${u(`/${g.path}/`)}">
+    <h3>${esc(mdTitle(readFileSync(join(ROOT, "content", g.file), "utf8")))}</h3>
+    <p>${esc(g.blurb)}</p>
+  </a>`,
+    )
+    .join("\n  ");
+
+  return shell({
+    title: "Guides — fintech-algorithms",
+    description: "Task-shaped guides: plotting indicators, wiring a data provider, and how far to trust each page.",
+    canonical: `${SITE}/guides/`,
+    breadcrumbs: [{ label: "Reference", href: u("/") }, { label: "Guides" }],
+    body: `<h1>Guides</h1>
+<p class="lede">Reference pages state the contract for one algorithm. These are the
+cross-cutting things you need once, and then never again.</p>
+<p>New here? Start with the <a href="${u("/start/")}">quick start</a>.</p>
+<div class="grid">
+  ${items}
+</div>`,
   });
 }
 
@@ -458,6 +612,7 @@ function renderLlms(payload) {
     `> plain arrays and objects in, plain values out. Import paths mirror article URLs.`,
     ``,
     `Install: npm install fintech-algorithms`,
+    `Quick start: ${SITE}/start/`,
     `Reference payload: https://unpkg.com/fintech-algorithms@${payload.package.version}/docs.json`,
     ``,
     `Each entry: name — import subpath — signature — verification tier — docs URL`,
@@ -477,18 +632,20 @@ function renderLlms(payload) {
 
 const renderSitemap = (payload) =>
   `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemap.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${[
   `${SITE}/`,
+  ...GUIDES.map((g) => `${SITE}/${g.path}/`),
+  `${SITE}/guides/`,
   ...payload.domains.map(
     (d) => `${SITE}/${domainSlug(payload.topics.find((t) => t.taxonomy.domainId === d.id))}/`,
   ),
   ...payload.topics.map((t) => `${SITE}/${t.path}/`),
 ]
-  .map((u) => `  <url><loc>${u}</loc></url>`)
+  .map((loc) => `  <url><loc>${loc}</loc></url>`)
   .join("\n")}
 </urlset>
-`.replace("www.sitemap.org", "www.sitemaps.org");
+`;
 
 // -------------------------------------------------------------------- main
 
@@ -498,6 +655,11 @@ if (existsSync(DIST)) rmSync(DIST, { recursive: true });
 mkdirSync(DIST, { recursive: true });
 
 write("index.html", renderHome(payload));
+
+for (const guide of GUIDES) {
+  write(`${guide.path}/index.html`, renderGuide(guide, readFileSync(join(ROOT, "content", guide.file), "utf8")));
+}
+write("guides/index.html", renderGuideIndex());
 
 for (const domain of payload.domains) {
   const first = payload.topics.find((t) => t.taxonomy.domainId === domain.id);
@@ -515,7 +677,8 @@ write("CNAME", "docs.thefintechbuilder.com\n");
 write(".nojekyll", "");
 cpSync(join(ROOT, "assets"), join(DIST, "assets"), { recursive: true });
 
+const pages = readdirSync(DIST, { recursive: true }).filter((f) => String(f).endsWith("index.html")).length;
 console.log(
-  `built ${payload.counts.topics} topic pages + ${payload.domains.length} domain pages ` +
-    `from fintech-algorithms@${payload.package.version}`,
+  `built ${pages} pages from fintech-algorithms@${payload.package.version} — ` +
+    `${payload.counts.withExample} worked examples`,
 );

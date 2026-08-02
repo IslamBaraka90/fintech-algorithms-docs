@@ -30,6 +30,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { markdown, title as mdTitle } from "./lib/markdown.mjs";
 import { highlight } from "./lib/highlight.mjs";
+import { anchorHeadings, tableOfContents, sidebar } from "./lib/page.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, "dist");
@@ -160,11 +161,32 @@ const codeBlock = (label, body, lang = null) =>
 
 const NAV = [
   { label: "Quick start", href: "/start/" },
+  { label: "Concepts", href: "/concepts/" },
   { label: "Guides", href: "/guides/" },
-  { label: "Reference", href: "/#domains" },
+  { label: "Reference", href: "/reference/" },
 ];
 
-function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd = null, mermaid = false, wide = false }) {
+/** Filled once the payload is loaded; only used for the search placeholder. */
+let PAYLOAD_COUNT = 0;
+
+function shell({
+  title,
+  description,
+  canonical,
+  body,
+  breadcrumbs = [],
+  jsonLd = null,
+  mermaid = false,
+  wide = false,
+  aside = "",
+  nav = "",
+  provenance = "",
+}) {
+  // Anchors and the contents list are derived from the finished body, so every
+  // template gets them without having to register its own headings.
+  const { html, headings } = anchorHeadings(body);
+  const toc = tableOfContents(headings);
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -175,10 +197,14 @@ function shell({ title, description, canonical, body, breadcrumbs = [], jsonLd =
 <link rel="canonical" href="${esc(canonical)}">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">
-<meta property="og:type" content="website">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="fintech-algorithms documentation">
 <meta property="og:url" content="${esc(canonical)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="author" content="The Fintech Builder">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="${u("/assets/style.css")}">
+<link rel="stylesheet" href="${u("/assets/layout.css")}">
 <script>window.__BASE__=${JSON.stringify(BASE)};</script>
 ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>` : ""}
 </head>
@@ -188,6 +214,12 @@ ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>
   <div class="bar">
     <a class="brand" href="${u("/")}">fintech<span>-algorithms</span></a>
     <nav class="primary">${NAV.map((n) => `<a href="${u(n.href)}">${esc(n.label)}</a>`).join("")}</nav>
+    <div class="site-search">
+      <input id="q" type="search" placeholder="Search ${PAYLOAD_COUNT} algorithms…" aria-label="Search algorithms"
+             autocomplete="off" spellcheck="false" data-index="${u("/search-index.json")}">
+      <kbd>/</kbd>
+      <ul id="results" hidden></ul>
+    </div>
     <nav class="external">
       <a href="${ARTICLES}">Articles</a>
       <a href="${NPM}">npm</a>
@@ -202,18 +234,26 @@ ${
         .join('<i aria-hidden="true">/</i>')}</div></nav>`
     : ""
 }
+<div class="shell${nav ? " has-nav" : ""}">
+${nav}
 <main id="main">
-${body}
+${html}
+${provenance}
 </main>
+${aside || toc ? `<div class="rail-col">${toc}${aside}</div>` : ""}
+</div>
 <footer>
   <div class="inner">
     <p>Generated from the <code>docs.json</code> payload published with the package.
     No example on this site was written by hand — every one is the output of running the code.</p>
     <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="${u("/start/")}">Quick start</a> · <a href="${u(
-      "/guides/verification/",
-    )}">What “verified” means</a> · <a href="${u("/llms.txt")}">llms.txt</a></p>
+      "/guides/",
+    )}">Guides</a> · <a href="${u("/guides/verification/")}">What “verified” means</a> · <a href="${u(
+      "/llms.txt",
+    )}">llms.txt</a></p>
   </div>
 </footer>
+<script src="${u("/assets/site.js")}" defer></script>
 ${
   mermaid
     ? `<script type="module">
@@ -261,12 +301,6 @@ function renderHome(payload) {
   </dl>
 </section>
 
-<section class="search">
-  <label for="q">Search ${counts.topics} algorithms</label>
-  <input id="q" type="search" placeholder="split adjustment · McClellan · divisor · ATR · Kalman" autocomplete="off" spellcheck="false">
-  <ul id="results" hidden></ul>
-</section>
-
 <section id="domains">
   <h2>Browse by domain</h2>
   <div class="grid">
@@ -300,16 +334,7 @@ function renderHome(payload) {
   </article>
 </section>
 
-<script src="${u("/assets/search.js")}" defer></script>
-<script id="search-index" type="application/json">${jsonForScript(
-    payload.topics.map((t) => ({
-      n: t.name,
-      p: t.path,
-      d: t.taxonomy.domain,
-      f: t.taxonomy.family,
-      v: t.verification.tier === "verified",
-    })),
-  )}</script>`;
+`;
 
   return shell({
     title: "fintech-algorithms — reference documentation",
@@ -330,7 +355,7 @@ function renderDomain(payload, domain) {
     .map((f) => {
       const inFamily = topics.filter((t) => t.taxonomy.familyId === f.id);
       return `<section class="family">
-  <h2 id="${esc(familySlug(inFamily[0]))}">${esc(f.name)}</h2>
+  <h2><a href="${u(`/${slug}/${esc(familySlug(inFamily[0]))}/`)}">${esc(f.name)}</a></h2>
   <ul class="topics">
     ${inFamily
       .map(
@@ -352,7 +377,9 @@ function renderDomain(payload, domain) {
       .map((f) => f.name)
       .join(", ")}.`,
     canonical: `${SITE}/${slug}/`,
-    breadcrumbs: [{ label: "Reference", href: u("/") }, { label: domain.name }],
+    wide: true,
+    nav: sidebar(payload, { currentPath: topics[0].path, u }),
+    breadcrumbs: [{ label: "Reference", href: u("/reference/") }, { label: domain.name }],
     body: `<h1>${esc(domain.name)}</h1>
 <p class="lede">${plural(domain.topicCount, "algorithm")} · ${families(domain.families.length)} · <code>${esc(
       domain.id,
@@ -550,6 +577,8 @@ ${t.references
 </ul>`);
   }
 
+  parts.push(relatedTopics(payload, t));
+
   const rail = `<aside class="rail">
   <dl>
     <dt>Verification</dt><dd>${badge(t)}</dd>
@@ -573,21 +602,359 @@ ${t.references
     canonical: `${SITE}/${t.path}/`,
     mermaid: t.assets.mermaid.length > 0,
     wide: true,
+    nav: sidebar(payload, { currentPath: t.path, u }),
+    aside: rail,
+    provenance: provenanceBlock(payload, t),
     breadcrumbs: [
-      { label: "Reference", href: u("/") },
+      { label: "Reference", href: u("/reference/") },
       { label: t.taxonomy.domain, href: u(`/${domainSlug(t)}/`) },
+      { label: t.taxonomy.family, href: u(`/${domainSlug(t)}/${familySlug(t)}/`) },
       { label: t.name },
     ],
     jsonLd: {
       "@context": "https://schema.org",
-      "@type": "SoftwareSourceCode",
-      name: t.name,
-      description: t.headline ?? t.name,
-      programmingLanguage: "TypeScript",
-      codeRepository: GITHUB,
+      "@type": "TechArticle",
+      headline: `${t.name}${t.headline ? ` — ${t.headline}` : ""}`,
+      description: t.api?.summary ?? t.headline ?? t.name,
       url: `${SITE}/${t.path}/`,
+      inLanguage: "en",
+      author: { "@type": "Organization", name: "The Fintech Builder", url: ARTICLES },
+      publisher: { "@type": "Organization", name: "The Fintech Builder", url: ARTICLES },
+      about: {
+        "@type": "SoftwareSourceCode",
+        name: t.name,
+        programmingLanguage: "TypeScript",
+        codeRepository: GITHUB,
+      },
+      citation: t.references
+        .filter((r) => r.url)
+        .map((r) => ({ "@type": "CreativeWork", name: r.title, url: r.url })),
     },
-    body: `<div class="with-rail"><article class="doc">\n${parts.join("\n\n")}\n</article>\n${rail}</div>`,
+    body: `<article class="doc">\n${parts.join("\n\n")}\n</article>`,
+  });
+}
+
+/**
+ * Siblings in the same family, in reading order, with the neighbours either
+ * side. Families are ordered pedagogically — reading D01-F01 in sequence *is*
+ * the bar-construction tutorial — and nothing else on the page said so.
+ */
+function relatedTopics(payload, t) {
+  const family = payload.topics.filter((x) => x.taxonomy.familyId === t.taxonomy.familyId);
+  const i = family.findIndex((x) => x.id === t.id);
+  const prev = family[i - 1];
+  const next = family[i + 1];
+  const others = family.filter((x) => x.id !== t.id);
+
+  const firstSentence = (x) => {
+    const text = x.api?.summary ?? x.headline ?? "";
+    const cut = text.split(/(?<=\.)\s/)[0] ?? text;
+    return cut.length > 130 ? `${cut.slice(0, 127)}…` : cut;
+  };
+
+  const siblings = others.length
+    ? `<h2>The rest of the ${esc(t.taxonomy.family)} family</h2>
+<ul class="related">
+${others
+  .map((x) => `  <li><a href="${u(`/${x.path}/`)}">${esc(x.name)}</a><span>${md(firstSentence(x))}</span></li>`)
+  .join("\n")}
+</ul>`
+    : "";
+
+  const pager =
+    prev || next
+      ? `<nav class="pager" aria-label="Within this family">
+  ${prev ? `<a class="prev" href="${u(`/${prev.path}/`)}"><span>Previous</span>${esc(prev.name)}</a>` : `<span></span>`}
+  ${next ? `<a class="next" href="${u(`/${next.path}/`)}"><span>Next</span>${esc(next.name)}</a>` : `<span></span>`}
+</nav>`
+      : "";
+
+  return `${siblings}\n${pager}`;
+}
+
+/**
+ * How this page was produced.
+ *
+ * Google's helpful-content guidance asks who made a page, how, and why a reader
+ * should trust it. For generated documentation that is answerable precisely
+ * rather than with a boilerplate byline: the package version, where the example
+ * came from, and whether an independent published source asserts it.
+ */
+function provenanceBlock(payload, t) {
+  const origin =
+    t.example?.origin === "fixture"
+      ? "replayed from the worked example published in its article, and asserted by the test suite on every run"
+      : t.example
+        ? "captured by executing this function on the input its own test supplies"
+        : "not available for this topic yet";
+
+  return `<aside class="provenance">
+  <h2>How this page was produced</h2>
+  <p>Generated from the <code>docs.json</code> payload shipped inside
+  <a href="${NPM}">fintech-algorithms@${esc(payload.package.version)}</a>. The signature and the
+  parameter list are checked against the compiled implementation at build time, so a description
+  that contradicts the code fails the build rather than reaching this page.</p>
+  <p>The worked example was ${origin}. Nothing here was transcribed by hand.</p>
+  <p class="meta-line"><a href="${esc(t.links.source)}">Implementation source</a> ·
+  <a href="${GITHUB}/blob/main/docs.json">reference payload</a> ·
+  maintained by <a href="${ARTICLES}">The Fintech Builder</a></p>
+</aside>`;
+}
+
+// ------------------------------------------------- family + reference pages
+
+/**
+ * Family pages: the level that was missing.
+ *
+ * Domain and topic pages existed, but *family* is the unit people actually name
+ * — "the McClellan family", "bar construction", "trade classification". A family
+ * usually shares one implementation body and one mental model, which is worth
+ * saying once rather than never.
+ */
+function renderFamily(payload, domain, family, topics) {
+  const slug = domainSlug(topics[0]);
+  const fslug = familySlug(topics[0]);
+  const verified = topics.filter((t) => t.verification.tier === "verified").length;
+  const shapes = [...new Set(topics.map((t) => t.import.archetype))];
+
+  const body = `<h1>${esc(family.name)}</h1>
+<p class="lede">${plural(topics.length, "algorithm")} in ${esc(domain.name)}${
+    verified ? ` · ${verified} with asserted arithmetic` : ""
+  }.</p>
+
+<h2>In this family</h2>
+<ol class="family-list">
+${topics
+  .map(
+    (t) => `  <li>
+    <a href="${u(`/${t.path}/`)}">${esc(t.name)}</a> ${badge(t)}
+    <p>${md(t.api?.summary ?? t.headline ?? "")}</p>
+    <code>${esc(t.import.signature)}</code>
+  </li>`,
+  )
+  .join("\n")}
+</ol>
+
+<h2>What they share</h2>
+<p>Every topic here is a <code>${esc(shapes.join("</code> or <code>"))}</code>, so once you have
+called one the rest follow the same shape. Import paths differ only in the final segment:</p>
+${codeBlock(
+  "ts",
+  topics
+    .slice(0, 2)
+    .map((t) => `import { ${t.import.entry} } from "${t.import.subpath}";`)
+    .join("\n"),
+  "ts",
+)}
+<p>Read them in the order above — the sequence is pedagogical, not alphabetical.</p>
+
+<h2>Where this sits</h2>
+<p><a href="${u(`/${slug}/`)}">${esc(domain.name)}</a> collects
+${plural(domain.topicCount, "algorithm")} across ${families(domain.families.length)}. For the concept
+behind this family rather than the call signatures, see the
+<a href="${u("/concepts/")}">concept guides</a>.</p>`;
+
+  return shell({
+    title: `${family.name} — ${domain.name} — fintech-algorithms`,
+    description: `${topics.length} algorithms in the ${family.name} family: ${topics
+      .map((t) => t.name)
+      .slice(0, 6)
+      .join(", ")}.`,
+    canonical: `${SITE}/${slug}/${fslug}/`,
+    wide: true,
+    nav: sidebar(payload, { currentPath: topics[0].path, u }),
+    breadcrumbs: [
+      { label: "Reference", href: u("/reference/") },
+      { label: domain.name, href: u(`/${slug}/`) },
+      { label: family.name },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: family.name,
+      url: `${SITE}/${slug}/${fslug}/`,
+      isPartOf: { "@type": "CollectionPage", name: domain.name, url: `${SITE}/${slug}/` },
+      hasPart: topics.map((t) => ({ "@type": "TechArticle", name: t.name, url: `${SITE}/${t.path}/` })),
+    },
+    body,
+  });
+}
+
+/** A landing page for the reference half of the site. */
+function renderReferenceIndex(payload) {
+  const { counts, domains } = payload;
+  const body = `<h1>Reference</h1>
+<p class="lede">A page for every one of the ${counts.topics} algorithms: signature, parameter
+contract, an executed worked example, diagrams and citations. ${counts.withExample} pages carry an
+example whose output came from running the code.</p>
+
+<h2>Browse by domain</h2>
+<div class="grid">
+${domains
+  .map((d) => {
+    const first = payload.topics.find((t) => t.taxonomy.domainId === d.id);
+    return `  <a class="card" href="${u(`/${domainSlug(first)}/`)}">
+    <span class="tag">${esc(d.id)}</span>
+    <h3>${esc(d.name)}</h3>
+    <p>${plural(d.topicCount, "topic")} · ${families(d.families.length)}</p>
+  </a>`;
+  })
+  .join("\n")}
+</div>
+
+<h2>How to read a reference page</h2>
+<p>Each page states the <strong>contract</strong> — how to call the function correctly. It does not
+explain the concept; that is what the <a href="${u("/concepts/")}">concept guides</a> and the
+<a href="${ARTICLES}">articles</a> are for. Three sections matter most:</p>
+<ul>
+  <li><strong>Parameters</strong> — meaning, unit, constraints, and how nulls are treated.</li>
+  <li><strong>Warm-up</strong> — how many leading positions are <code>null</code>, and why. Getting
+  this wrong shifts a plotted series with no error to warn you.</li>
+  <li><strong>Worked example</strong> — real input and the real returned value, labelled with where
+  it came from. See <a href="${u("/guides/verification/")}">what &ldquo;verified&rdquo; means</a>.</li>
+</ul>`;
+
+  return shell({
+    title: "Reference — fintech-algorithms",
+    description: `Reference pages for all ${counts.topics} algorithms across ${counts.domains} domains, each with a parameter contract and an executed worked example.`,
+    canonical: `${SITE}/reference/`,
+    wide: true,
+    nav: sidebar(payload, { currentPath: null, u }),
+    breadcrumbs: [{ label: "Home", href: u("/") }, { label: "Reference" }],
+    body,
+  });
+}
+
+// ----------------------------------------------------------------- concepts
+
+/**
+ * Concept guides: one per domain, explaining the *subject* rather than any one
+ * algorithm. This is the layer a generated reference cannot provide — a contract
+ * tells you how to call `divisorContinuityAdjustment`, not why an index needs a
+ * divisor at all.
+ */
+const CONCEPTS = [
+  {
+    slug: "corporate-actions",
+    file: "corporate-actions.md",
+    domainId: "D02",
+    blurb: "Why an unadjusted price series is wrong, and the order adjustments have to be applied in.",
+  },
+  {
+    slug: "index-construction",
+    file: "index-construction.md",
+    domainId: "D03",
+    blurb: "An index is a divisor with marketing attached. Everything else is maintenance.",
+  },
+  {
+    slug: "market-microstructure",
+    file: "market-microstructure.md",
+    domainId: "D11",
+    blurb: "How orders become prices, and what the spread actually costs you.",
+  },
+  {
+    slug: "market-data-engineering",
+    file: "market-data-engineering.md",
+    domainId: "D01",
+    blurb: "Turning a raw tape into something you can compute on without lying to yourself.",
+  },
+  {
+    slug: "market-breadth",
+    file: "market-breadth.md",
+    domainId: "D04",
+    blurb: "The index went up. Did the market? Counting participants instead of watching price.",
+  },
+];
+
+function renderConcept(payload, concept, source) {
+  const heading = mdTitle(source);
+  const bodyMd = source.replace(/^#\s+.+$/m, "").trim();
+  const domain = payload.domains.find((d) => d.id === concept.domainId);
+  const first = payload.topics.find((t) => t.taxonomy.domainId === concept.domainId);
+
+  const footer =
+    domain && first
+      ? `<h2>The reference pages for this domain</h2>
+<p><a href="${u(`/${domainSlug(first)}/`)}">${esc(domain.name)}</a> —
+${plural(domain.topicCount, "algorithm")} across ${families(domain.families.length)}, each with a
+parameter contract and an executed example.</p>`
+      : "";
+
+  return shell({
+    title: `${heading} — fintech-algorithms`,
+    description: concept.blurb,
+    canonical: `${SITE}/concepts/${concept.slug}/`,
+    breadcrumbs: [
+      { label: "Home", href: u("/") },
+      { label: "Concepts", href: u("/concepts/") },
+      { label: heading },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: heading,
+      description: concept.blurb,
+      url: `${SITE}/concepts/${concept.slug}/`,
+      inLanguage: "en",
+      author: { "@type": "Organization", name: "The Fintech Builder", url: ARTICLES },
+      publisher: { "@type": "Organization", name: "The Fintech Builder", url: ARTICLES },
+    },
+    provenance: `<aside class="provenance">
+  <h2>About this guide</h2>
+  <p>Written to explain the subject, not to restate the reference. Every code sample runs against the
+  published package — <code>npm install fintech-algorithms</code> — and each algorithm it names has a
+  <a href="${u("/reference/")}">reference page</a> stating its exact contract.</p>
+  <p class="meta-line">Maintained by <a href="${ARTICLES}">The Fintech Builder</a> ·
+  <a href="https://github.com/IslamBaraka90/fintech-algorithms-docs/blob/main/content/concepts/${esc(
+    concept.file,
+  )}">Improve this page</a></p>
+</aside>`,
+    body: `<article class="doc prose"><h1>${esc(heading)}</h1>\n${markdown(bodyMd)}\n${footer}</article>`,
+  });
+}
+
+function renderConceptIndex(payload) {
+  const cards = CONCEPTS.map((c) => {
+    const heading = mdTitle(readFileSync(join(ROOT, "content", "concepts", c.file), "utf8"));
+    const domain = payload.domains.find((d) => d.id === c.domainId);
+    return `  <a class="card" href="${u(`/concepts/${c.slug}/`)}">
+    <span class="tag">${esc(c.domainId)}</span>
+    <h3>${esc(heading)}</h3>
+    <p>${esc(c.blurb)}</p>
+    ${domain ? `<p class="card-meta">${plural(domain.topicCount, "algorithm")}</p>` : ""}
+  </a>`;
+  }).join("\n");
+
+  return shell({
+    title: "Concepts — fintech-algorithms",
+    description:
+      "Guides to the subjects behind the library: corporate actions, index construction, market microstructure, market data engineering and market breadth.",
+    canonical: `${SITE}/concepts/`,
+    wide: true,
+    breadcrumbs: [{ label: "Home", href: u("/") }, { label: "Concepts" }],
+    body: `<h1>Concepts</h1>
+<p class="lede">Reference pages state a contract. These explain the subject — what the problem is,
+why the standard approaches exist, and where each one breaks.</p>
+<div class="grid">
+${cards}
+</div>
+
+<h2>How this documentation is layered</h2>
+<div class="table-scroll"><table>
+  <thead><tr><th>Layer</th><th>Answers</th><th>Where</th></tr></thead>
+  <tbody>
+    <tr><td>Concepts</td><td>What is this subject, and why does it work this way?</td><td>Here</td></tr>
+    <tr><td>Guides</td><td>How do I accomplish a specific task?</td><td><a href="${u(
+      "/guides/",
+    )}">Guides</a></td></tr>
+    <tr><td>Reference</td><td>How do I call this function correctly?</td><td><a href="${u(
+      "/reference/",
+    )}">Reference</a></td></tr>
+    <tr><td>Articles</td><td>How does this one algorithm work, step by step?</td><td><a href="${ARTICLES}">thefintechbuilder.com</a></td></tr>
+  </tbody>
+</table></div>
+<p>Each layer links to the next rather than repeating it. A concept guide that re-explained one
+algorithm in depth would be competing with its own article for the same reader.</p>`,
   });
 }
 
@@ -675,8 +1042,18 @@ const renderSitemap = (payload) =>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${[
   `${SITE}/`,
+  `${SITE}/reference/`,
+  `${SITE}/concepts/`,
+  ...CONCEPTS.map((c) => `${SITE}/concepts/${c.slug}/`),
   ...GUIDES.map((g) => `${SITE}/${g.path}/`),
   `${SITE}/guides/`,
+  ...payload.domains.flatMap((d) => {
+    const first = payload.topics.find((t) => t.taxonomy.domainId === d.id);
+    return d.families.map((f) => {
+      const inFamily = payload.topics.filter((t) => t.taxonomy.familyId === f.id);
+      return `${SITE}/${domainSlug(first)}/${familySlug(inFamily[0])}/`;
+    });
+  }),
   ...payload.domains.map(
     (d) => `${SITE}/${domainSlug(payload.topics.find((t) => t.taxonomy.domainId === d.id))}/`,
   ),
@@ -690,6 +1067,7 @@ ${[
 // -------------------------------------------------------------------- main
 
 const payload = await loadPayload();
+PAYLOAD_COUNT = payload.counts.topics;
 
 if (existsSync(DIST)) rmSync(DIST, { recursive: true });
 mkdirSync(DIST, { recursive: true });
@@ -701,14 +1079,47 @@ for (const guide of GUIDES) {
 }
 write("guides/index.html", renderGuideIndex());
 
+for (const concept of CONCEPTS) {
+  write(
+    `concepts/${concept.slug}/index.html`,
+    renderConcept(payload, concept, readFileSync(join(ROOT, "content", "concepts", concept.file), "utf8")),
+  );
+}
+write("concepts/index.html", renderConceptIndex(payload));
+write("reference/index.html", renderReferenceIndex(payload));
+
 for (const domain of payload.domains) {
   const first = payload.topics.find((t) => t.taxonomy.domainId === domain.id);
   write(`${domainSlug(first)}/index.html`, renderDomain(payload, domain));
+
+  for (const family of domain.families) {
+    const inFamily = payload.topics.filter((t) => t.taxonomy.familyId === family.id);
+    write(
+      `${domainSlug(first)}/${familySlug(inFamily[0])}/index.html`,
+      renderFamily(payload, domain, family, inFamily),
+    );
+  }
 }
 
 for (const topic of payload.topics) {
   write(`${topic.path}/index.html`, renderTopic(payload, topic));
 }
+
+// The search index used to be embedded in the home page, which made search
+// unreachable from the 289 pages a reader is actually on. Now it is fetched once
+// and cached by the browser.
+write(
+  "search-index.json",
+  JSON.stringify(
+    payload.topics.map((t) => ({
+      n: t.name,
+      p: t.path,
+      d: t.taxonomy.domain,
+      f: t.taxonomy.family,
+      v: t.verification.tier === "verified",
+    })),
+  ),
+);
 
 write("llms.txt", renderLlms(payload));
 write("sitemap.xml", renderSitemap(payload));

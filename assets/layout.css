@@ -1,0 +1,186 @@
+/* ============================================================ site structure
+
+   Three columns on wide screens: navigation, content, then contents and
+   metadata. Collapses to one on narrow screens, dropping the least essential
+   column first. Loaded after style.css, which owns the palette and typography. */
+
+.shell { max-width: 88rem; margin: 0 auto; display: block; }
+.shell.has-nav {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  gap: 0 2.5rem;
+  align-items: start;
+  padding: 0 clamp(1rem, 3vw, 2rem);
+}
+body.wide .shell.has-nav { grid-template-columns: 17rem minmax(0, 1fr) 15rem; }
+.shell.has-nav > main { padding-left: 0; padding-right: 0; max-width: var(--measure); }
+.shell:not(.has-nav) > main { margin: 0 auto; }
+.rail-col { position: sticky; top: 4.75rem; padding-top: 2.5rem; }
+
+/* ------------------------------------------------------------- sidebar nav */
+
+.sidebar {
+  position: sticky; top: 4.75rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+  padding: 2rem 0.5rem 3rem 0;
+  font-size: 0.86rem;
+  border-right: 1px solid var(--border);
+}
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar a { display: block; padding: 0.22rem 0.5rem; border-radius: 6px; color: var(--muted); }
+.sidebar a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.sidebar a[aria-current="page"] { background: var(--accent-soft); color: var(--link); font-weight: 600; }
+.sidebar summary {
+  cursor: pointer; padding: 0.35rem 0.5rem; border-radius: 6px;
+  font-weight: 600; color: var(--text); list-style: none;
+}
+.sidebar summary::-webkit-details-marker { display: none; }
+.sidebar summary::before {
+  content: "\25B8"; display: inline-block; width: 1em;
+  color: var(--muted); transition: transform 0.12s;
+}
+.sidebar details[open] > summary::before { transform: rotate(90deg); }
+.sidebar summary:hover { background: var(--surface-2); }
+.nav-id { color: var(--muted); font-weight: 500; font-size: 0.78em; margin-right: 0.15rem; }
+.nav-family > a { font-weight: 550; color: var(--text); margin-top: 0.35rem; }
+.nav-family > ul { border-left: 1px solid var(--border); margin-left: 0.65rem; padding-left: 0.4rem; }
+.nav-domain > details > ul { padding-left: 0.55rem; }
+
+/* --------------------------------------------------------------------- TOC */
+
+.toc {
+  font-size: 0.82rem; padding-bottom: 1.5rem;
+  margin-bottom: 1.25rem; border-bottom: 1px solid var(--border);
+}
+.toc-title {
+  margin: 0 0 0.5rem; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--muted); font-weight: 650;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0.1rem 0; }
+.toc a {
+  display: block; padding: 0.16rem 0 0.16rem 0.6rem;
+  border-left: 2px solid var(--border); color: var(--muted);
+}
+.toc a:hover { color: var(--text); border-left-color: var(--border-strong); text-decoration: none; }
+.toc a[aria-current] { color: var(--link); border-left-color: var(--accent); font-weight: 550; }
+
+/* ---------------------------------------------------------- heading anchors */
+
+h2, h3 { scroll-margin-top: 5rem; }
+.anchor {
+  margin-left: 0.4rem; color: var(--muted); opacity: 0; font-weight: 400;
+  text-decoration: none; transition: opacity 0.12s;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+
+/* -------------------------------------------------------- header search box */
+
+.site-search { position: relative; flex: 1 1 16rem; max-width: 26rem; }
+.site-search input {
+  width: 100%; padding: 0.42rem 2.2rem 0.42rem 0.75rem;
+  font: inherit; font-size: 0.88rem; color: inherit;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+}
+.site-search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--surface); }
+.site-search kbd {
+  position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%);
+  font-family: inherit; font-size: 0.7rem; color: var(--muted);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  padding: 0 0.3rem; pointer-events: none;
+}
+.site-search input:focus + kbd { display: none; }
+.site-search #results {
+  position: absolute; top: calc(100% + 0.4rem); left: 0; right: 0; z-index: 20;
+  list-style: none; margin: 0; padding: 0; max-height: 24rem; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+.site-search #results li + li { border-top: 1px solid var(--border); }
+.site-search #results a { display: block; padding: 0.55rem 0.8rem; color: inherit; font-size: 0.88rem; }
+.site-search #results a:hover,
+.site-search #results a:focus { background: var(--surface-2); text-decoration: none; outline: none; }
+.site-search .where { display: block; color: var(--muted); font-size: 0.76rem; }
+.site-search .empty { padding: 0.7rem 0.8rem; color: var(--muted); font-size: 0.86rem; }
+
+/* ------------------------------------------------------------- copy button */
+
+figure.code { position: relative; }
+figure.code figcaption { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+button.copy {
+  font: inherit; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 0.15rem 0.5rem; border-radius: 5px; cursor: pointer;
+  color: var(--muted); background: var(--surface); border: 1px solid var(--border-strong);
+}
+button.copy:hover { color: var(--text); border-color: var(--accent); }
+button.copy.done { color: var(--ok-fg); border-color: var(--ok-fg); }
+figure.code > button.copy { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 2; }
+
+/* --------------------------------------------- family list, related, pager */
+
+ol.family-list { list-style: none; counter-reset: fam; margin: 0; padding: 0; }
+ol.family-list li {
+  counter-increment: fam; position: relative;
+  padding: 0.9rem 0 0.9rem 2.4rem; border-bottom: 1px solid var(--border);
+}
+ol.family-list li::before {
+  content: counter(fam); position: absolute; left: 0; top: 1rem;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 0.75rem; font-weight: 650; display: grid; place-items: center;
+}
+ol.family-list p { margin: 0.25rem 0; color: var(--muted); font-size: 0.9rem; }
+ol.family-list code { color: var(--muted); background: none; padding: 0; font-size: 0.82rem; }
+
+ul.related { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+ul.related li { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+ul.related span { display: block; color: var(--muted); font-size: 0.86rem; }
+
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 2.5rem 0 0; }
+.pager a {
+  display: block; padding: 0.85rem 1rem; border: 1px solid var(--border);
+  border-radius: var(--radius); color: inherit; font-weight: 550;
+}
+.pager a:hover { border-color: var(--accent); text-decoration: none; }
+.pager a.next { text-align: right; }
+.pager span {
+  display: block; font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin-bottom: 0.15rem;
+}
+
+/* --------------------------------------------------------------- provenance */
+
+.provenance {
+  margin: 3rem 0 0; padding: 1.15rem 1.3rem;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 0.88rem; color: var(--muted);
+}
+.provenance h2 { margin: 0 0 0.5rem; font-size: 0.95rem; color: var(--text); }
+.provenance p { margin: 0.45rem 0; }
+.provenance .meta-line {
+  font-size: 0.82rem; padding-top: 0.5rem;
+  border-top: 1px solid var(--border); margin-top: 0.8rem;
+}
+.card-meta { font-size: 0.78rem !important; margin-top: 0.4rem !important; }
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 78rem) {
+  body.wide .shell.has-nav { grid-template-columns: 16rem minmax(0, 1fr); }
+  body.wide .rail-col { grid-column: 2; position: static; padding-top: 0; }
+  .toc { display: none; }
+}
+@media (max-width: 62rem) {
+  .shell.has-nav { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static; max-height: none; border-right: 0;
+    border-bottom: 1px solid var(--border); padding: 1rem 0;
+  }
+  .sidebar .nav-root > li > details > ul { max-height: 22rem; overflow-y: auto; }
+  .site-search { order: 3; flex-basis: 100%; max-width: none; }
+}
+@media (max-width: 44rem) {
+  .pager { grid-template-columns: 1fr; }
+  .pager a.next { text-align: left; }
+}

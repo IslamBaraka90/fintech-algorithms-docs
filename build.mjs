@@ -302,7 +302,9 @@ function renderHome(payload) {
 </section>
 
 <section id="domains">
-  <h2>Browse by domain</h2>
+  <h2>Browse the reference</h2>
+  <p class="lede">Every algorithm has a page: signature, parameter contract, an executed worked
+  example, diagrams and citations.</p>
   <div class="grid">
     ${domains
       .map((d) => {
@@ -314,6 +316,21 @@ function renderHome(payload) {
     </a>`;
       })
       .join("\n    ")}
+  </div>
+</section>
+
+<section>
+  <h2>Start with a concept</h2>
+  <p class="lede">Reference pages state a contract. These explain the subject — what the problem
+  is, why the standard approaches exist, and where each one quietly breaks.</p>
+  <div class="grid">
+${CONCEPTS.map(
+  (c) => `    <a class="card" href="${u(`/concepts/${c.slug}/`)}">
+      <span class="tag">${esc(c.domainId)}</span>
+      <h3>${esc(mdTitle(readFileSync(join(ROOT, "content", "concepts", c.file), "utf8")))}</h3>
+      <p>${esc(c.blurb)}</p>
+    </a>`,
+).join("\n")}
   </div>
 </section>
 

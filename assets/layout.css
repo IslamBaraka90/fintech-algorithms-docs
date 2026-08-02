@@ -184,3 +184,14 @@ ul.related span { display: block; color: var(--muted); font-size: 0.86rem; }
   .pager { grid-template-columns: 1fr; }
   .pager a.next { text-align: left; }
 }
+
+/* ------------------------------------------------------------- card polish
+
+   Cards sit in a grid, so a short title next to a long one leaves a ragged
+   row. Making each card a column and pushing the meta line to the bottom keeps
+   the row visually level whatever the title length. */
+
+.grid .card { display: flex; flex-direction: column; }
+.grid .card h3 { margin-bottom: 0.35rem; }
+.grid .card p { margin-top: auto; }
+.grid .card .tag { margin-bottom: 0.15rem; }

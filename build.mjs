@@ -37,6 +37,19 @@ const DIST = join(ROOT, "dist");
 
 const SITE = "https://docs.thefintechbuilder.com";
 const ARTICLES = "https://thefintechbuilder.com";
+
+/**
+ * The *same* GA4 measurement id as the articles site, deliberately.
+ *
+ * `docs.` is a subdomain of `thefintechbuilder.com`, and GA4's default `auto`
+ * cookie domain writes `_ga` on the registrable domain — so one id means one
+ * client id shared across both sites, and a reader moving from an article to
+ * its reference page stays in a single session with attribution intact. A
+ * second data stream would mint a second cookie: double-counted users and a
+ * self-referral at every hop. Split the two sites in reporting with the
+ * built-in Hostname dimension instead.
+ */
+const GA_ID = "G-Y3LQHVFVRW";
 const NPM = "https://www.npmjs.com/package/fintech-algorithms";
 const GITHUB = "https://github.com/IslamBaraka90/Fintech-Algorithms-Library";
 
@@ -169,6 +182,22 @@ const NAV = [
 /** Filled once the payload is loaded; only used for the search placeholder. */
 let PAYLOAD_COUNT = 0;
 
+/**
+ * gtag.js, on every page. Loaded `async` so it never blocks first paint, and
+ * emitted last in `<head>` so a slow tag manager cannot delay the stylesheets.
+ *
+ * Cookie domain is left at its `auto` default on purpose — see `GA_ID`.
+ */
+const analytics = () =>
+  `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA_ID}');
+</script>
+`;
+
 function shell({
   title,
   description,
@@ -207,7 +236,7 @@ function shell({
 <link rel="stylesheet" href="${u("/assets/layout.css")}">
 <script>window.__BASE__=${JSON.stringify(BASE)};</script>
 ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>` : ""}
-</head>
+${analytics()}</head>
 <body${wide ? ' class="wide"' : ""}>
 <a class="skip" href="#main">Skip to content</a>
 <header class="site">

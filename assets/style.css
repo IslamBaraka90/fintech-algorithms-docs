@@ -70,6 +70,12 @@ code, pre, .sig {
   font-size: 0.86em;
 }
 code { background: var(--surface-2); padding: 0.14em 0.4em; border-radius: 5px; }
+/* Inline code is routinely a URL or an import subpath with no space in 60-odd
+   characters. On a phone that is wider than the column, and a paragraph cannot
+   scroll — so let it break. Code *blocks* keep their lines intact and scroll. */
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+p, li, dd, td, .lede { overflow-wrap: break-word; }
 /* Captured output can run to hundreds of lines; cap it so a page stays
    readable and the reader can still scroll the whole thing. */
 pre { margin: 0; padding: 0.9rem 1rem; overflow: auto; max-height: 26rem; background: var(--code-bg); }
@@ -212,14 +218,17 @@ p { margin: 0.75rem 0; }
 #results a:hover { background: var(--surface-2); text-decoration: none; }
 #results .where { display: block; color: var(--muted); font-size: 0.78rem; }
 
-.grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); margin-top: 0.5rem; }
+/* `min(…, 100%)` on the track minimum: a bare `minmax(16rem, …)` is a floor the
+   grid will happily overflow its container to honour, which on a 320px phone
+   means a horizontally scrolling page. */
+.grid { display: grid; gap: 0.9rem; grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); margin-top: 0.5rem; }
 .card { display: block; padding: 1.1rem 1.2rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: inherit; box-shadow: var(--shadow); transition: border-color 0.15s ease; }
 .card:hover { border-color: var(--accent); text-decoration: none; }
 .card .tag { font-size: 0.7rem; letter-spacing: 0.07em; color: var(--muted); font-weight: 650; }
 .card h3 { margin: 0.2rem 0 0.25rem; font-size: 1rem; }
 .card p { margin: 0; color: var(--muted); font-size: 0.86rem; }
 
-.panels { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); margin-top: 3rem; }
+.panels { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); margin-top: 3rem; }
 .panel { padding: 1.3rem 1.4rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .panel h2 { margin-top: 0; font-size: 1.05rem; }
 .panel p { font-size: 0.92rem; }
@@ -239,7 +248,7 @@ p { margin: 0.75rem 0; }
 @media (max-width: 62rem) {
   .with-rail { grid-template-columns: 1fr; gap: 2rem; }
   .rail { position: static; border-left: 0; border-top: 1px solid var(--border); padding: 1.25rem 0 0; }
-  .rail dl { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem 1.5rem; }
+  .rail dl { grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr)); gap: 0.75rem 1.5rem; }
   .rail dt { margin-top: 0; }
 }
 

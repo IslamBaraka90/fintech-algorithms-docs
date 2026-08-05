@@ -5,17 +5,43 @@
    column first. Loaded after style.css, which owns the palette and typography. */
 
 .shell { max-width: 88rem; margin: 0 auto; display: block; }
-.shell.has-nav {
+.shell.has-nav,
+.shell.has-rail {
   display: grid;
-  grid-template-columns: 17rem minmax(0, 1fr);
   gap: 0 2.5rem;
   align-items: start;
   padding: 0 clamp(1rem, 3vw, 2rem);
 }
+.shell.has-nav { grid-template-columns: 17rem minmax(0, 1fr); }
 body.wide .shell.has-nav { grid-template-columns: 17rem minmax(0, 1fr) 15rem; }
-.shell.has-nav > main { padding-left: 0; padding-right: 0; max-width: var(--measure); }
+
+/* Guides and concept pages: contents list, but no navigation tree. Without a
+   column of its own the rail is just the last block element in the shell, which
+   is how the contents list ended up printed underneath the article. */
+.shell.has-rail:not(.has-nav) { grid-template-columns: minmax(0, 1fr) 15rem; }
+
+.shell.has-nav > main { padding-left: 0; padding-right: 0; }
 .shell:not(.has-nav) > main { margin: 0 auto; }
-.rail-col { position: sticky; top: 4.75rem; padding-top: 2.5rem; }
+
+/* Why `min(…, 100%)` rather than a bare max-width.
+
+   `margin: 0 auto` on a grid item switches off stretch alignment, so the item
+   is sized shrink-to-fit — and shrink-to-fit floors at min-content, which for a
+   page holding a wide code block is the longest line of that block. <main>
+   therefore grew past its own column and pushed the whole document sideways on
+   every screen under ~700px, instead of the code scrolling inside itself the way
+   `pre { overflow: auto }` intends. A max-width is applied after that floor, so
+   clamping it to the container is what actually contains the page.
+
+   `min-width: 0` is here for the same reason from the other direction: grid
+   items default to `min-width: auto` and refuse to shrink below their content. */
+.shell.has-nav > main,
+.shell.has-rail > main { min-width: 0; }
+.shell.has-nav > main,
+.shell.has-rail:not(.has-nav) > main { max-width: min(var(--measure), 100%); }
+/* The home page is the one rail page that wants the full width for its card grid. */
+body.wide .shell.has-rail:not(.has-nav) > main { max-width: min(76rem, 100%); }
+.rail-col { position: sticky; top: 4.75rem; padding-top: 2.5rem; min-width: 0; }
 
 /* ------------------------------------------------------------- sidebar nav */
 
@@ -164,11 +190,30 @@ ul.related span { display: block; color: var(--muted); font-size: 0.86rem; }
 }
 .card-meta { font-size: 0.78rem !important; margin-top: 0.4rem !important; }
 
+/* ------------------------------------------------------------ machine routes
+
+   The llms.txt slice and the markdown twin of a page. Present for a reader who
+   is looking for them, quiet for one who is not. */
+
+.rail ul.links.machine { margin-top: 0.9rem; padding-top: 0.9rem; }
+.rail ul.links.machine a { color: var(--muted); }
+.rail ul.links.machine a:hover { color: var(--link); }
+.machine-line {
+  font-size: 0.86rem; color: var(--muted);
+  margin: 0 0 2rem; padding: 0.7rem 0.9rem;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.machine-line code { background: var(--surface); }
+
 /* --------------------------------------------------------------- responsive */
 
 @media (max-width: 78rem) {
   body.wide .shell.has-nav { grid-template-columns: 16rem minmax(0, 1fr); }
-  body.wide .rail-col { grid-column: 2; position: static; padding-top: 0; }
+  body.wide .shell.has-nav > .rail-col { grid-column: 2; position: static; padding-top: 0; }
+  /* The contents list is the only thing in the rail on a page with no sidebar,
+     and it is hidden below — so the column goes with it. Placing the rail by
+     `grid-column` here would open an implicit second column on those pages. */
+  .shell.has-rail:not(.has-nav) { grid-template-columns: minmax(0, 1fr); }
   .toc { display: none; }
 }
 @media (max-width: 62rem) {
@@ -177,7 +222,7 @@ ul.related span { display: block; color: var(--muted); font-size: 0.86rem; }
   .shell.has-nav,
   body.wide .shell.has-nav { grid-template-columns: minmax(0, 1fr); }
   body.wide .shell.has-nav > main { min-width: 0; max-width: 100%; }
-  body.wide .rail-col { grid-column: 1; }
+  body.wide .shell.has-nav > .rail-col { grid-column: 1; }
   .sidebar {
     position: static; max-height: none; border-right: 0;
     border-bottom: 1px solid var(--border); padding: 1rem 0;

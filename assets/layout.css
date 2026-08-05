@@ -172,7 +172,12 @@ ul.related span { display: block; color: var(--muted); font-size: 0.86rem; }
   .toc { display: none; }
 }
 @media (max-width: 62rem) {
-  .shell.has-nav { grid-template-columns: 1fr; }
+  /* Override the more-specific wide-screen selectors as well. Without these,
+     topic pages retain an implicit navigation/content grid on phone widths. */
+  .shell.has-nav,
+  body.wide .shell.has-nav { grid-template-columns: minmax(0, 1fr); }
+  body.wide .shell.has-nav > main { min-width: 0; max-width: 100%; }
+  body.wide .rail-col { grid-column: 1; }
   .sidebar {
     position: static; max-height: none; border-right: 0;
     border-bottom: 1px solid var(--border); padding: 1rem 0;

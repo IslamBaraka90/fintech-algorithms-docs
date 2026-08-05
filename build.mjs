@@ -167,6 +167,29 @@ const pretty = (v) => {
 
 const domainSlug = (t) => t.path.split("/")[0];
 const familySlug = (t) => t.path.split("/")[1];
+
+/*
+ * Machine routes, advertised two ways.
+ *
+ * `<link rel="alternate">` is how a crawler finds them without being told —
+ * it is the same mechanism that points at a feed, and it costs nothing to a
+ * reader. The visible link is for the agent that is already reading the page
+ * and would otherwise have to guess the URL.
+ */
+const domainLlmsUrl = (t) => `${SITE}/${domainSlug(t)}/llms.txt`;
+
+const machineLinks = (t) => [
+  {
+    href: `${SITE}/${t.path}/index.md`,
+    type: "text/markdown",
+    title: "This page as markdown",
+  },
+  {
+    href: domainLlmsUrl(t),
+    type: "text/plain",
+    title: `Index of every algorithm in ${t.taxonomy.domain}, for agents`,
+  },
+];
 const families = (n) => `${n} ${n === 1 ? "family" : "families"}`;
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -220,11 +243,20 @@ function shell({
   aside = "",
   nav = "",
   provenance = "",
+  alternates = [],
 }) {
   // Anchors and the contents list are derived from the finished body, so every
   // template gets them without having to register its own headings.
   const { html, headings } = anchorHeadings(body);
   const toc = tableOfContents(headings);
+
+  /*
+   * `has-rail` exists because the third column is not implied by anything else
+   * in the markup. A guide has no sidebar but does have a contents list, and
+   * without a class saying so the layout had no way to tell "no rail" from
+   * "rail, just no nav" — so the rail fell through to the bottom of the page.
+   */
+  const rail = aside || toc ? `<div class="rail-col">${toc}${aside}</div>` : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -245,6 +277,9 @@ function shell({
 <link rel="stylesheet" href="${u("/assets/style.css")}">
 <link rel="stylesheet" href="${u("/assets/layout.css")}">
 <script>window.__BASE__=${JSON.stringify(BASE)};</script>
+${[{ href: `${SITE}/llms.txt`, type: "text/plain", title: "Index of every algorithm, for agents" }, ...alternates]
+  .map((a) => `<link rel="alternate" type="${a.type}" href="${esc(a.href)}" title="${esc(a.title)}">`)
+  .join("\n")}
 ${jsonLd ? `<script type="application/ld+json">${jsonForScript(jsonLd)}</script>` : ""}
 ${analytics()}</head>
 <body${wide ? ' class="wide"' : ""}>
@@ -273,13 +308,13 @@ ${
         .join('<i aria-hidden="true">/</i>')}</div></nav>`
     : ""
 }
-<div class="shell${nav ? " has-nav" : ""}">
+<div class="shell${nav ? " has-nav" : ""}${rail ? " has-rail" : ""}">
 ${nav}
 <main id="main">
 ${html}
 ${provenance}
 </main>
-${aside || toc ? `<div class="rail-col">${toc}${aside}</div>` : ""}
+${rail}
 </div>
 <footer>
   <div class="inner">
@@ -435,11 +470,22 @@ function renderDomain(payload, domain) {
     canonical: `${SITE}/${slug}/`,
     wide: true,
     nav: sidebar(payload, { currentPath: topics[0].path, u }),
+    alternates: [
+      {
+        href: `${SITE}/${slug}/llms.txt`,
+        type: "text/plain",
+        title: `Index of every algorithm in ${domain.name}, for agents`,
+      },
+    ],
     breadcrumbs: [{ label: "Reference", href: u("/reference/") }, { label: domain.name }],
     body: `<h1>${esc(domain.name)}</h1>
 <p class="lede">${plural(domain.topicCount, "algorithm")} · ${families(domain.families.length)} · <code>${esc(
       domain.id,
     )}</code></p>
+<p class="machine-line">Reading this with a program?
+<a href="${u(`/${slug}/llms.txt`)}">${esc(slug)}/llms.txt</a> lists all
+${plural(domain.topicCount, "algorithm")} here — signature, shape and verification tier, one line each.
+Every reference page below also exists as markdown at <code>&lt;page URL&gt;index.md</code>.</p>
 ${sections}`,
   });
 }
@@ -650,6 +696,10 @@ ${t.references
     <li><a href="${esc(t.links.article)}">Article</a></li>
     <li><a href="${esc(t.links.npm)}">Package on npm</a></li>
   </ul>
+  <ul class="links machine">
+    <li><a href="${u(`/${t.path}/index.md`)}">This page as markdown</a></li>
+    <li><a href="${u(`/${domainSlug(t)}/llms.txt`)}">${esc(t.taxonomy.domain)} index (llms.txt)</a></li>
+  </ul>
 </aside>`;
 
   return shell({
@@ -660,6 +710,7 @@ ${t.references
     wide: true,
     nav: sidebar(payload, { currentPath: t.path, u }),
     aside: rail,
+    alternates: machineLinks(t),
     provenance: provenanceBlock(payload, t),
     breadcrumbs: [
       { label: "Reference", href: u("/reference/") },
@@ -819,6 +870,13 @@ behind this family rather than the call signatures, see the
     canonical: `${SITE}/${slug}/${fslug}/`,
     wide: true,
     nav: sidebar(payload, { currentPath: topics[0].path, u }),
+    alternates: [
+      {
+        href: `${SITE}/${slug}/llms.txt`,
+        type: "text/plain",
+        title: `Index of every algorithm in ${domain.name}, for agents`,
+      },
+    ],
     breadcrumbs: [
       { label: "Reference", href: u("/reference/") },
       { label: domain.name, href: u(`/${slug}/`) },

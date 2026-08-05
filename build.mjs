@@ -69,11 +69,20 @@ const u = (p) => `${BASE}${p}`;
 
 // ------------------------------------------------------------ load payload
 
+/**
+ * Returns the parsed payload *and* the exact bytes it was parsed from.
+ *
+ * The raw text is what gets republished at `/reference/payload.json`. Writing
+ * `JSON.stringify(payload)` instead would be a re-serialisation — same data,
+ * different bytes — and the whole point of self-hosting the payload is that the
+ * copy the site serves is provably the copy the site was built from.
+ */
 async function loadPayload() {
   const local = arg("--payload", null);
   if (local) {
     console.log(`payload: ${local}`);
-    return JSON.parse(readFileSync(resolve(local), "utf8"));
+    const raw = readFileSync(resolve(local), "utf8");
+    return { payload: JSON.parse(raw), raw };
   }
   const version = arg("--version", null);
 
@@ -106,7 +115,8 @@ async function loadPayload() {
         const res = await fetch(url);
         if (res.ok) {
           console.log(`payload: ${url}`);
-          return res.json();
+          const raw = await res.text();
+          return { payload: JSON.parse(raw), raw };
         }
         failures.push(`${res.status} ${res.statusText} — ${url}`);
       } catch (e) {
@@ -1010,7 +1020,9 @@ const GUIDES = [
   { file: "start.md", path: "start", blurb: "Install, call your first algorithm, and understand nulls and verdicts." },
   { file: "charting.md", path: "guides/charting", blurb: "Join indicator output to candles without shifting the series." },
   { file: "data-providers.md", path: "guides/data-providers", blurb: "Write the one adapter you own, and validate at the boundary." },
+  { file: "archetypes.md", path: "guides/archetypes", blurb: "Five input shapes cover all of it. Learn one and the rest follow." },
   { file: "verification.md", path: "guides/verification", blurb: "What the badges mean and where each example came from." },
+  { file: "ai-agents.md", path: "guides/ai-agents", blurb: "Reading this library from an agent: what to fetch, in what order, and how far to trust it." },
 ];
 
 function renderGuide(guide, source) {
@@ -1055,32 +1067,318 @@ cross-cutting things you need once, and then never again.</p>
 
 // ----------------------------------------------------------------- machine
 
-function renderLlms(payload) {
+/*
+ * Everything below is written for a program, not a person.
+ *
+ * The governing constraint is that an agent pays for every byte it reads. A
+ * single 60 KB index that answers one question about one algorithm is a bad
+ * trade, so the machine surface is layered: a root index that is mostly a
+ * routing map, a per-domain slice small enough to read whole, and a per-topic
+ * markdown page an order of magnitude cheaper than the HTML it mirrors.
+ *
+ * Every URL here is absolute. These files are fetched out of context, often
+ * from a cache, and a root-relative link in one is unresolvable.
+ */
+
+/** Slice URL for a domain. Needs a topic because the slug lives on the path. */
+const domainLlms = (payload, d) =>
+  `${SITE}/${domainSlug(payload.topics.find((t) => t.taxonomy.domainId === d.id))}/llms.txt`;
+
+/** One tier, one sentence — for pages that carry a tier rather than explain both. */
+const TIER_MEANING = {
+  verified:
+    "The worked example below is the figure published in this algorithm's article, replayed and " +
+    "asserted by the test suite on every build. The arithmetic cannot drift without the build failing.",
+  contract:
+    "The module loads, the entry point is callable and its declared signature matches the compiled " +
+    "code. The example below is real captured output, but no independently published figure asserts " +
+    "the numbers.",
+};
+
+/** What the two tiers license you to assume. Spelled out, not hinted at. */
+const tierLegend = () => [
+  `Verification tiers:`,
+  `- verified — the worked example is the figure published in the algorithm's article, replayed`,
+  `  and asserted by the test suite on every run. The arithmetic cannot drift without the build`,
+  `  failing. Treat the numbers as reproducible.`,
+  `- contract — the module loads, the entry point is callable and its declared signature matches`,
+  `  the compiled code. The example is real captured output, but no independently published`,
+  `  figure asserts it. Treat the shape as reliable and the numbers as unattested.`,
+  `Full explanation: ${SITE}/guides/verification/`,
+];
+
+/**
+ * One topic, one line.
+ *
+ * The archetype is the highest-value field here: it names the input shape class
+ * — `series-transform` takes `number[]`, `tape-aggregate` takes trades — so an
+ * agent can rule a topic in or out without fetching anything at all.
+ *
+ * The import subpath is deliberately *not* on the line. It is the docs URL with
+ * one prefix swapped, and printing both put the topic path — over 100 characters
+ * in the longer domains — on every line twice. Removing the duplicate is what
+ * brings the largest slice inside its size budget, and the derivation is stated
+ * once at the top of every file that uses these lines.
+ */
+const entryLine = (t) =>
+  `- ${t.name} — \`${t.import.signature}\` — ${t.import.archetype} — ` +
+  `${t.verification.tier} — ${SITE}/${t.path}/`;
+
+const ENTRY_KEY = [
+  `Each entry: name — signature — archetype — verification tier — docs URL`,
+  `From the docs URL, mechanically:`,
+  `  import subpath — swap the ${SITE}/ prefix for fintech-algorithms/ and drop the trailing slash`,
+  `  markdown page  — append index.md; same contract as the HTML page, a fraction of the bytes`,
+];
+
+/**
+ * The root index, or a single domain's slice of it.
+ *
+ * A slice is worthless if finding it costs a read of the whole index, so the
+ * root leads with the routing map and each slice links back. Both carry the
+ * install line and the payload URL, because either one may be the only file an
+ * agent ever reads.
+ */
+function renderLlms(payload, domain = null) {
+  const { counts, package: pkg } = payload;
+  const common = [
+    `Install: npm install fintech-algorithms`,
+    `Source: fintech-algorithms@${pkg.version} · payload schema ${payload.schemaVersion}`,
+    `Reference payload: ${SITE}/reference/payload.json`,
+    `Version endpoint: ${SITE}/version.json`,
+  ];
+
+  if (domain) {
+    const topics = payload.topics.filter((t) => t.taxonomy.domainId === domain.id);
+    const slug = domainSlug(topics[0]);
+    const verified = topics.filter((t) => t.verification.tier === "verified").length;
+
+    const lines = [
+      `# ${domain.name} — fintech-algorithms`,
+      ``,
+      `> ${plural(topics.length, "algorithm")} in ${families(domain.families.length)}, sliced out of the`,
+      `> fintech-algorithms reference. Zero-dependency TypeScript: plain arrays and objects in,`,
+      `> plain values out. This file covers ${domain.id} only.`,
+      ``,
+      `${domain.id} · ${plural(topics.length, "topic")} · ${families(domain.families.length)} · ${verified} verified`,
+      ...common,
+      `Domain page: ${SITE}/${slug}/`,
+      `Full index (${counts.topics} topics across ${counts.domains} domains): ${SITE}/llms.txt`,
+      ``,
+      ...tierLegend(),
+      ``,
+      ...ENTRY_KEY,
+      ``,
+    ];
+
+    for (const f of domain.families) {
+      const inFamily = topics.filter((t) => t.taxonomy.familyId === f.id);
+      lines.push(`## ${f.id} — ${f.name}`, `${SITE}/${slug}/${familySlug(inFamily[0])}/`, ``);
+      for (const t of inFamily) lines.push(entryLine(t));
+      lines.push(``);
+    }
+    return lines.join("\n");
+  }
+
   const lines = [
     `# fintech-algorithms`,
     ``,
-    `> ${payload.counts.topics} zero-dependency TypeScript implementations of market-data,`,
+    `> ${counts.topics} zero-dependency TypeScript implementations of market-data,`,
     `> corporate-action, index-construction, market-breadth, chart-pattern,`,
     `> statistical-time-series and technical-indicator algorithms. Provider-agnostic:`,
     `> plain arrays and objects in, plain values out. Import paths mirror article URLs.`,
     ``,
-    `Install: npm install fintech-algorithms`,
+    `${counts.topics} topics · ${counts.domains} domains · ${counts.families} families · ` +
+      `${counts.verified} verified · ${counts.withExample} with a worked example`,
+    ...common,
+    `Reference payload (published release): https://unpkg.com/fintech-algorithms@${pkg.version}/docs.json`,
     `Quick start: ${SITE}/start/`,
-    `Reference payload: https://unpkg.com/fintech-algorithms@${payload.package.version}/docs.json`,
+    `Using this from an agent: ${SITE}/guides/ai-agents/`,
     ``,
-    `Each entry: name — import subpath — signature — verification tier — docs URL`,
+    `## Per-domain indexes`,
+    ``,
+    `Each slice below repeats this header and lists only its own domain. Fetch one of these`,
+    `instead of this file once you know the domain — they are a fraction of the size.`,
+    ``,
+    ...payload.domains.map(
+      (d) => `- ${d.id} — ${d.name} — ${plural(d.topicCount, "topic")} — ${domainLlms(payload, d)}`,
+    ),
+    ``,
+    `## Guides`,
+    ``,
+    ...GUIDES.map((g) => `- ${mdTitle(readFileSync(join(ROOT, "content", g.file), "utf8"))} — ${g.blurb} — ${SITE}/${g.path}/`),
+    `- Concepts index — one guide per domain, explaining the subject rather than the API — ${SITE}/concepts/`,
+    ``,
+    ...tierLegend(),
+    ``,
+    `## Topics`,
+    ``,
+    ...ENTRY_KEY,
     ``,
   ];
+
   for (const d of payload.domains) {
-    lines.push(`## ${d.id} — ${d.name}`, ``);
-    for (const t of payload.topics.filter((x) => x.taxonomy.domainId === d.id)) {
-      lines.push(
-        `- ${t.name} — \`${t.import.subpath}\` — \`${t.import.signature}\` — ${t.verification.tier} — ${SITE}/${t.path}/`,
-      );
-    }
+    lines.push(`### ${d.id} — ${d.name}`, `Domain slice: ${domainLlms(payload, d)}`, ``);
+    for (const t of payload.topics.filter((x) => x.taxonomy.domainId === d.id)) lines.push(entryLine(t));
     lines.push(``);
   }
   return lines.join("\n");
+}
+
+/**
+ * The markdown twin of a topic page.
+ *
+ * Generated from the payload rather than converted from the rendered HTML: the
+ * HTML carries a sidebar of 324 links, a rail, breadcrumbs and a nav tree, none
+ * of which mean anything to a reader that only wants the call signature. Going
+ * back to the source drops a 74 KB page to a few kilobytes without deciding,
+ * tag by tag, what to throw away.
+ *
+ * Sections mirror `renderTopic` in the same order, so a reader who has seen one
+ * form recognises the other.
+ */
+function renderTopicMarkdown(payload, t) {
+  // A newline or a pipe inside a description would silently break the row.
+  const cell = (s) => String(s ?? "").replace(/\s*\n\s*/g, " ").replace(/\|/g, "\\|").trim();
+  const fence = (lang, body) => ["```" + lang, body, "```"].join("\n");
+  const L = [];
+
+  L.push(`# ${t.name}`, ``);
+  if (t.headline) L.push(`> ${t.headline}`, ``);
+  L.push(
+    `\`${t.id}\` · ${t.taxonomy.domain} → ${t.taxonomy.family} · archetype \`${t.import.archetype}\` · ` +
+      `difficulty ${t.taxonomy.difficulty}/5 · verification **${t.verification.tier}**`,
+    ``,
+    `Full page: ${SITE}/${t.path}/`,
+    ``,
+  );
+
+  L.push(`## Install and import`, ``, fence("bash", `npm install fintech-algorithms`), ``);
+  L.push(fence("ts", `import { ${t.import.entry} } from "${t.import.subpath}";`), ``);
+
+  L.push(`## Signature`, ``, fence("ts", t.import.signature), ``);
+
+  if (t.api?.summary) L.push(t.api.summary, ``);
+
+  if (t.api?.params.length) {
+    L.push(`## Parameters`, ``, `| Name | Type | Required | Notes |`, `| --- | --- | --- | --- |`);
+    for (const p of t.api.params) {
+      const notes = [
+        p.description ?? "",
+        p.constraints
+          ? Object.entries(p.constraints)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(", ")
+          : "",
+        p.nulls ? `nulls: ${p.nulls}` : "",
+        p.default != null ? `default: ${JSON.stringify(p.default)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      L.push(
+        `| \`${cell(p.name)}\` | \`${cell(p.type ?? "—")}\` | ${p.required === false ? "no" : "yes"} | ${cell(notes)} |`,
+      );
+    }
+    L.push(``);
+  }
+
+  if (t.api?.returns) {
+    L.push(
+      `## Returns`,
+      ``,
+      `\`${t.api.returns.type ?? "—"}\`${t.api.returns.length ? ` · length ${t.api.returns.length}` : ""}`,
+      ``,
+    );
+    if (t.api.returns.description) L.push(t.api.returns.description, ``);
+  }
+
+  if (t.api?.warmup) {
+    L.push(
+      `## Warm-up`,
+      ``,
+      `The first \`${t.api.warmup.count}\` positions are \`${t.api.warmup.value}\`.` +
+        (t.api.warmup.note ? ` ${t.api.warmup.note}` : ""),
+      ``,
+    );
+  }
+
+  if (t.api?.errors?.length) {
+    L.push(`## Errors`, ``, ...t.api.errors.map((e) => `- When ${e.when} — ${e.behaviour}`), ``);
+  }
+
+  if (t.api?.complexity) {
+    L.push(`## Complexity`, ``, `Time \`${t.api.complexity.time}\`, space \`${t.api.complexity.space}\`.`, ``);
+  }
+
+  L.push(`## Worked example`, ``);
+  if (!t.example) {
+    L.push(`No runnable example is available for this topic yet. The article works the`, `calculation through by hand: ${t.links.article}`, ``);
+  } else {
+    const ex = t.example;
+    L.push((ORIGIN[ex.origin] ?? ORIGIN.executed).note, ``, `### Input`, ``);
+    ex.args.forEach((a, i) => {
+      L.push(`\`${t.import.params[i] ?? `argument ${i + 1}`}\`:`, ``, fence("json", pretty(a.value)), ``);
+      if (a.elided) {
+        L.push(
+          a.elided.kind === "array"
+            ? `Showing ${a.elided.shown} of ${a.elided.total} elements.`
+            : `Showing ${a.elided.shown} of ${a.elided.total} fields.`,
+          ``,
+        );
+      }
+    });
+    L.push(`### Call`, ``, fence("ts", `${t.import.entry}(${t.import.params.join(", ")})`), ``);
+    L.push(`### Returns`, ``, `${ex.outputShape}`, ``, fence("json", pretty(ex.output)), ``);
+    if (ex.outputElided) {
+      L.push(
+        ex.outputElided.kind === "array"
+          ? `Showing ${ex.outputElided.shown} of ${ex.outputElided.total} elements.`
+          : `Showing ${ex.outputElided.shown} of ${ex.outputElided.total} fields.`,
+        ``,
+      );
+    }
+  }
+
+  if (t.import.exports.length > 1) {
+    L.push(
+      `## Other exports`,
+      ``,
+      `${t.import.exports
+        .filter((e) => e !== t.import.entry)
+        .map((e) => `\`${e}\``)
+        .join(", ")}. Every module additionally exports \`run\` as an alias of its primary`,
+      `function, and a \`meta\` object carrying its catalog id, domain, family, shape and article URL.`,
+      ``,
+    );
+  }
+
+  L.push(
+    `## Verification and provenance`,
+    ``,
+    `Tier: **${t.verification.tier}**${t.verification.via ? ` (via ${t.verification.via})` : ""}.`,
+    ``,
+    TIER_MEANING[t.verification.tier] ?? TIER_MEANING.contract,
+    ``,
+    `Both tiers guarantee the signature. Full explanation: ${SITE}/guides/verification/`,
+    ``,
+    `Generated from the docs.json payload shipped inside fintech-algorithms@${payload.package.version}.`,
+    `The signature and parameter list are checked against the compiled implementation at build time,`,
+    `so a description that contradicts the code fails the build rather than reaching this file.`,
+    ``,
+  );
+
+  L.push(
+    `## Links`,
+    ``,
+    `- Article (how it works, step by step): ${t.links.article}`,
+    `- Implementation source: ${t.links.source}`,
+    ...(t.links.repo ? [`- Standalone repository: ${t.links.repo}`] : []),
+    `- Package on npm: ${t.links.npm}`,
+    `- Domain index for agents: ${SITE}/${domainSlug(t)}/llms.txt`,
+    ``,
+  );
+
+  return L.join("\n");
 }
 
 const renderSitemap = (payload) =>
@@ -1112,7 +1410,7 @@ ${[
 
 // -------------------------------------------------------------------- main
 
-const payload = await loadPayload();
+const { payload, raw: payloadRaw } = await loadPayload();
 PAYLOAD_COUNT = payload.counts.topics;
 
 if (existsSync(DIST)) rmSync(DIST, { recursive: true });
@@ -1137,6 +1435,7 @@ write("reference/index.html", renderReferenceIndex(payload));
 for (const domain of payload.domains) {
   const first = payload.topics.find((t) => t.taxonomy.domainId === domain.id);
   write(`${domainSlug(first)}/index.html`, renderDomain(payload, domain));
+  write(`${domainSlug(first)}/llms.txt`, renderLlms(payload, domain));
 
   for (const family of domain.families) {
     const inFamily = payload.topics.filter((t) => t.taxonomy.familyId === family.id);
@@ -1149,6 +1448,7 @@ for (const domain of payload.domains) {
 
 for (const topic of payload.topics) {
   write(`${topic.path}/index.html`, renderTopic(payload, topic));
+  write(`${topic.path}/index.md`, renderTopicMarkdown(payload, topic));
 }
 
 // The search index used to be embedded in the home page, which made search
@@ -1165,6 +1465,33 @@ write(
       v: t.verification.tier === "verified",
     })),
   ),
+);
+
+/*
+ * The payload, republished from this site.
+ *
+ * It was previously advertised only as `unpkg.com/fintech-algorithms@<version>/docs.json`,
+ * which is a URL that goes stale the moment the version in a cached copy of
+ * llms.txt no longer exists — a dangling 404 by construction. The self-hosted
+ * copy is the exact bytes this build consumed, so it cannot disagree with the
+ * pages around it. The versioned name is the permanent one; the unversioned name
+ * is what everything links to.
+ */
+write("reference/payload.json", payloadRaw);
+write(`reference/payload-${payload.package.version}.json`, payloadRaw);
+
+/*
+ * "Do the docs I am reading describe the package I have installed?" — one
+ * sub-kilobyte fetch, rather than parsing a changelog or downloading 2.5 MB of
+ * payload to read four fields off the top of it.
+ */
+write(
+  "version.json",
+  JSON.stringify({
+    schemaVersion: payload.schemaVersion,
+    package: payload.package,
+    counts: payload.counts,
+  }),
 );
 
 write("llms.txt", renderLlms(payload));

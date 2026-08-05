@@ -24,6 +24,9 @@ const TYPES = {
   ".svg": "image/svg+xml",
   ".xml": "application/xml; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
+  // Matches what GitHub Pages sends for the per-topic `index.md`, so a local
+  // check of how a client handles it is a check of the real thing.
+  ".md": "text/markdown; charset=utf-8",
 };
 
 createServer(async (req, res) => {

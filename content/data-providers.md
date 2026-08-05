@@ -74,14 +74,14 @@ that knows what the vendor is capable of sending. The library has algorithms for
 exactly this:
 
 ```ts
-import { calculate as validateOhlc }
+import { validateBars }
   from "fintech-algorithms/market-data-engineering/cleaning-and-validation/ohlc-consistency-validator";
 
 const bars = toBars("AAPL", rows);
-const verdicts = validateOhlc(bars);
+const verdicts = validateBars(bars, { tickSize: 0.01, toleranceTicks: 1, priceScale: 1 });
 
-const clean = bars.filter((_, i) => verdicts[i].status === "ok");
-const rejected = verdicts.filter((v) => v.status !== "ok");
+const clean = bars.filter((_, i) => verdicts[i].valid);
+const rejected = verdicts.filter((v) => !v.valid);
 
 if (rejected.length) {
   logger.warn({ rejected }, "bars rejected at the provider boundary");
@@ -102,12 +102,18 @@ Two feeds never agree exactly, and their clocks drift. Reconcile them rather tha
 picking one and hoping:
 
 ```ts
-import { calculate as consensus }
+import { consensus }
   from "fintech-algorithms/market-data-engineering/data-quality/price-source-consensus-check";
 
 const verdict = consensus(
-  { primary: 101.24, secondary: 101.26, tertiary: 101.25 },
-  { toleranceBps: 5 },
+  { as_of: "2026-07-20T09:30:00Z", quotes: [primary, secondary, tertiary] },
+  {
+    minimum_independent_sources: 3,
+    z_threshold: 3,
+    absolute_tolerance: 0.01,
+    maximum_tolerance: 0.05,
+    max_age_ms: 2000,
+  },
 );
 ```
 

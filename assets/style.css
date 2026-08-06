@@ -230,6 +230,9 @@ p { margin: 0.75rem 0; }
 
 .panels { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); margin-top: 3rem; }
 .panel { padding: 1.3rem 1.4rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+/* The page measure caps this grid at two columns, so an odd third panel would
+   sit alone in the left cell. A wide one spans the row instead. */
+.panel.wide { grid-column: 1 / -1; }
 .panel h2 { margin-top: 0; font-size: 1.05rem; }
 .panel p { font-size: 0.92rem; }
 

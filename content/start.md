@@ -95,8 +95,17 @@ Three ways in:
 - **Browse by domain** — corporate actions, index construction, market breadth, and so on.
 - **Derive the path** — if you know the article URL, you know the import path.
 
+If you write code with an agent, install the skill instead and let it do the
+looking up — it reads the same contracts and refuses to invent a path that does
+not exist:
+
+```bash
+npx skills add IslamBaraka90/Fintech-Algorithms-Library
+```
+
 ## Next
 
+- [The agent skill](/guides/agent-skill/) — install it, and what it changes about the answers you get
 - [Plotting an indicator on a chart](/guides/charting/) — joining output to candles without misaligning it
 - [Wiring up a data provider](/guides/data-providers/) — a full adapter, end to end
 - [What "verified" means](/guides/verification/) — how far to trust each page

@@ -423,6 +423,14 @@ ${CONCEPTS.map(
     their API you edit that file and the algorithms never move.</p>
     <p><a href="${u("/guides/data-providers/")}">Wiring up a provider →</a></p>
   </article>
+  <article class="panel wide">
+    <h2>Your coding agent can read all of it</h2>
+    <p>The package ships an agent skill, so Claude Code, Codex, Cursor and the rest work from the
+    real import paths, warm-up counts and verification tiers instead of guessing at them. It
+    bundles a lookup script that answers from the payload you have installed, offline.</p>
+    <p><code>npx skills add IslamBaraka90/Fintech-Algorithms-Library</code></p>
+    <p><a href="${u("/guides/agent-skill/")}">What the skill contains →</a></p>
+  </article>
 </section>
 
 `;
@@ -1081,11 +1089,35 @@ const GUIDES = [
   { file: "archetypes.md", path: "guides/archetypes", blurb: "Five input shapes cover all of it. Learn one and the rest follow." },
   { file: "verification.md", path: "guides/verification", blurb: "What the badges mean and where each example came from." },
   { file: "ai-agents.md", path: "guides/ai-agents", blurb: "Reading this library from an agent: what to fetch, in what order, and how far to trust it." },
+  { file: "agent-skill.md", path: "guides/agent-skill", blurb: "Install the skill and let your coding agent use the library correctly." },
 ];
 
-function renderGuide(guide, source) {
-  const heading = mdTitle(source);
-  const bodyMd = source.replace(/^#\s+.+$/m, "").trim();
+/*
+ * Guides are prose, but a good deal of what they assert is payload data — how
+ * many topics there are, how the two verification tiers divide them, how many
+ * topics share an archetype. A number typed into prose goes stale silently and
+ * nothing catches it, so a guide writes `{{topics}}` or `{{row-classify}}` and
+ * the build fills it in. `contract` is the one derived value: the payload counts
+ * the verified topics and the rest are the other tier by definition. An unknown
+ * token fails the build rather than reaching the page as literal braces.
+ */
+function fillCounts(source, payload) {
+  const { counts, archetypes } = payload;
+  const values = {
+    ...counts,
+    contract: counts.topics - counts.verified,
+    ...Object.fromEntries(archetypes.map((a) => [a.name, a.topicCount])),
+  };
+  return source.replace(/\{\{([\w-]+)\}\}/g, (token, key) => {
+    if (!(key in values)) throw new Error(`Unknown count token ${token} in a guide`);
+    return String(values[key]);
+  });
+}
+
+function renderGuide(guide, source, payload) {
+  const filled = fillCounts(source, payload);
+  const heading = mdTitle(filled);
+  const bodyMd = filled.replace(/^#\s+.+$/m, "").trim();
   const isStart = guide.path === "start";
   return shell({
     title: `${heading} — fintech-algorithms`,
@@ -1252,6 +1284,7 @@ function renderLlms(payload, domain = null) {
     `Reference payload (published release): https://unpkg.com/fintech-algorithms@${pkg.version}/docs.json`,
     `Quick start: ${SITE}/start/`,
     `Using this from an agent: ${SITE}/guides/ai-agents/`,
+    `Agent skill (install rather than re-derive): npx skills add IslamBaraka90/Fintech-Algorithms-Library — ${SITE}/guides/agent-skill/`,
     ``,
     `## Per-domain indexes`,
     ``,
@@ -1477,7 +1510,10 @@ mkdirSync(DIST, { recursive: true });
 write("index.html", renderHome(payload));
 
 for (const guide of GUIDES) {
-  write(`${guide.path}/index.html`, renderGuide(guide, readFileSync(join(ROOT, "content", guide.file), "utf8")));
+  write(
+    `${guide.path}/index.html`,
+    renderGuide(guide, readFileSync(join(ROOT, "content", guide.file), "utf8"), payload),
+  );
 }
 write("guides/index.html", renderGuideIndex());
 

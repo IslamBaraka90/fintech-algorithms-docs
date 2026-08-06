@@ -7,7 +7,7 @@ in a way that a summary of these docs is not.
 
 ## What this library is
 
-324 pure functions that compute market-data, corporate-action, index,
+{{topics}} pure functions that compute market-data, corporate-action, index,
 breadth, microstructure, candlestick, chart-pattern, statistical and
 technical-indicator quantities. Plain arrays and objects in, plain values out.
 Zero runtime dependencies. It runs in Node and in a browser, and it does not
@@ -29,6 +29,22 @@ Knowing the boundary saves you from proposing things it cannot do.
   this site is a fixed input recorded at build time, never a live quote.
 - **Not advice.** See the last section — that boundary is not negotiable.
 
+## There is a skill for this
+
+If you are an agent that can load skills, install one rather than re-deriving
+this page every session:
+
+```bash
+npx skills add IslamBaraka90/Fintech-Algorithms-Library
+```
+
+The skill packages the resolution order below, the archetype filter, the
+verification tiers and the failure modes that produce a wrong answer without
+throwing — plus a lookup script that answers a topic query offline from the
+installed payload. Installing it means none of that has to be worked out again.
+The package ships the same skill in its npm tarball. Both are described in
+[The agent skill](/guides/agent-skill/).
+
 ## Resolution order
 
 Fetch in this order and stop at the first step that answers the question. Each
@@ -42,7 +58,7 @@ full.
    [`/version.json`](/version.json), which is under a kilobyte.
 2. **The domain index.** `https://docs.thefintechbuilder.com/{domain-slug}/llms.txt`
    lists every topic in one domain with its signature, archetype, verification
-   tier and docs URL. All thirteen are between 3 and 11 KB. The full map of them
+   tier and docs URL. All {{domains}} are between 3 and 11 KB. The full map of them
    is the `## Per-domain indexes` block at the top of [/llms.txt](/llms.txt), so
    one root fetch gives you a permanent routing table and you never need to read
    the root file whole again.
@@ -51,7 +67,7 @@ full.
    is the SMA contract in 3 KB against 73 KB for the same page as HTML. Same
    sections in the same order — signature, parameters, returns, warm-up, errors,
    complexity, worked example, provenance — with no navigation tree, no sidebar
-   and no 324-entry link list. Across the library it is 3–11 KB of markdown
+   and no {{topics}}-entry link list. Across the library it is 3–11 KB of markdown
    against 68–114 KB of HTML.
 4. **The full payload.** [`/reference/payload.json`](/reference/payload.json) is
    every topic as structured JSON, self-hosted and byte-identical to the copy
@@ -84,7 +100,7 @@ the call is right but I have not verified the arithmetic against a published
 figure" is a useful sentence and an honest one. Full detail:
 [What "verified" means](/guides/verification/).
 
-## Narrowing 324 topics quickly
+## Narrowing {{topics}} topics quickly
 
 Filter on the **archetype** before you fetch anything. It is on every entry line
 in every index and it names the input shape class:
@@ -97,7 +113,7 @@ integration, because it decides how much adapter code the user has to write.
 
 ## When the topic is not in the package
 
-Say so, and stop. The library covers 324 named topics across thirteen domains;
+Say so, and stop. The library covers {{topics}} named topics across {{domains}} domains;
 it is not a general numerical library, and it has no catch-all.
 
 Do not:

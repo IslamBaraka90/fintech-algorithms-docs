@@ -15,7 +15,7 @@ as a machine-readable fixture, and the conformance suite replays it on every run
 If someone changes the implementation so it produces a different answer, the
 build goes red.
 
-79 of 187 topics are in this tier.
+{{verified}} of {{topics}} topics are in this tier.
 
 ## `contract`
 
@@ -24,10 +24,10 @@ registry metadata matches reality, and its exports are what the package claims.
 What is **not** asserted is the arithmetic: no published numbers exist in the
 catalog for this topic yet, so nothing checks that the answer is right.
 
-108 of 187 topics are in this tier.
+{{contract}} of {{topics}} topics are in this tier.
 
 This is stated plainly rather than hidden, because the alternative — implying
-uniform confidence across 187 topics — would be worse. Most libraries in this
+uniform confidence across {{topics}} topics — would be worse. Most libraries in this
 space assert nothing at all and say nothing about it.
 
 ## Where the examples come from

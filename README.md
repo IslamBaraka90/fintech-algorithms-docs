@@ -30,17 +30,32 @@ node serve.mjs                        # preview dist/ at :4321
 
 ## No dependencies
 
-There is no framework, no `node_modules`, and no lockfile. 187 near-identical
-documents generated from one JSON file do not need a build system, and a
-documentation site for a zero-dependency library should not carry a toolchain
-heavier than the library itself.
+There is no framework, no `node_modules`, and no lockfile. A few hundred
+near-identical documents generated from one JSON file do not need a build system,
+and a documentation site for a zero-dependency library should not carry a
+toolchain heavier than the library itself.
 
 | File | Role |
 |---|---|
 | `build.mjs` | The whole generator — fetch payload, render pages, emit `sitemap.xml`, `llms.txt`, `robots.txt` |
+| `content/*.md` | The hand-written guides, one file each |
 | `assets/style.css` | One stylesheet, light and dark |
 | `assets/search.js` | Client-side search over an index embedded in the home page |
 | `serve.mjs` | Local preview only |
+
+## Guides
+
+A guide is two edits: a file in `content/`, and one entry in the `GUIDES` array
+in `build.mjs`. The guide index, `sitemap.xml` and `llms.txt` all derive from
+that array, so none of them is edited by hand.
+
+Guides are prose, but they should never type out a number the payload already
+knows. Write `{{topics}}`, `{{domains}}`, `{{families}}`, `{{verified}}`,
+`{{contract}}`, `{{withExample}}` or an archetype name such as
+`{{series-transform}}`, and the build substitutes the figure from the payload it
+is building against. An unknown token fails the build. That is the mechanism that
+stops a sentence like "79 of 187 topics are verified" from surviving two
+releases, which is exactly what it did before the tokens existed.
 
 ## URLs mirror import paths
 

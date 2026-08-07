@@ -156,6 +156,25 @@ nav.primary { display: flex; gap: 1.25rem; font-size: 0.9rem; font-weight: 500; 
 nav.external { display: flex; gap: 1.1rem; font-size: 0.85rem; margin-left: auto; }
 nav.external a { color: var(--muted); }
 
+/* Every page carries the skill install line: the reader who most needs it is the
+   one who arrived on a single reference page from a search engine and will never
+   see the home page. It scrolls away with the content rather than sticking. */
+.skillbar { border-bottom: 1px solid var(--border); background: var(--accent-soft); font-size: 0.85rem; }
+.skillbar .inner {
+  max-width: 76rem; margin: 0 auto;
+  padding: 0.6rem clamp(1rem, 4vw, 2rem);
+  display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; align-items: baseline;
+}
+.skillbar code { background: var(--surface); border: 1px solid var(--border); }
+.skillbar a { font-weight: 600; white-space: nowrap; }
+/* The command is 52 characters and must not be what makes a phone scroll
+   sideways: it breaks below the point where it stops fitting, and only holds
+   itself on one line above it. */
+.skillbar code, .hero-install code { overflow-wrap: anywhere; }
+@media (min-width: 44rem) {
+  .skillbar code, .hero-install code { white-space: nowrap; overflow-wrap: normal; }
+}
+
 .crumbs { border-bottom: 1px solid var(--border); background: var(--bg); }
 .crumbs .inner { max-width: 76rem; margin: 0 auto; padding: 0.65rem clamp(1rem, 4vw, 2rem); font-size: 0.82rem; color: var(--muted); }
 .crumbs a { color: var(--muted); }
@@ -195,6 +214,8 @@ p { margin: 0.75rem 0; }
 .button:hover { text-decoration: none; filter: brightness(1.08); }
 .button.ghost { background: transparent; color: var(--link); border-color: var(--border-strong); }
 .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin: 1.4rem 0 0; }
+.hero-install { color: var(--muted); font-size: 0.9rem; margin: 0.9rem 0 0; }
+.hero-install code { background: var(--surface-2); border: 1px solid var(--border); }
 
 /* ---------------------------------------------------------------- home */
 

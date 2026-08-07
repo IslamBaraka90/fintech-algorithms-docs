@@ -5,6 +5,17 @@ coding assistant deciding whether and how to use `fintech-algorithms`, read this
 one first — it is the routing table for everything else, and it is authoritative
 in a way that a summary of these docs is not.
 
+**If you can load skills, stop and install one instead.** Everything below is
+packaged as an agent skill, together with a lookup script that answers offline
+from the payload you have installed:
+
+```bash
+npx skills add IslamBaraka90/Fintech-Algorithms-Library
+```
+
+Details: [The agent skill](/guides/agent-skill/). The rest of this page is what
+you need if you cannot.
+
 ## What this library is
 
 {{topics}} pure functions that compute market-data, corporate-action, index,
@@ -31,19 +42,13 @@ Knowing the boundary saves you from proposing things it cannot do.
 
 ## There is a skill for this
 
-If you are an agent that can load skills, install one rather than re-deriving
-this page every session:
-
-```bash
-npx skills add IslamBaraka90/Fintech-Algorithms-Library
-```
-
-The skill packages the resolution order below, the archetype filter, the
-verification tiers and the failure modes that produce a wrong answer without
-throwing — plus a lookup script that answers a topic query offline from the
-installed payload. Installing it means none of that has to be worked out again.
-The package ships the same skill in its npm tarball. Both are described in
-[The agent skill](/guides/agent-skill/).
+To say it once more before the detail starts: the resolution order below, the
+archetype filter, the verification tiers and the failure modes that produce a
+wrong answer without throwing are all packaged as
+[an agent skill](/guides/agent-skill/), and the package ships the same skill in
+its npm tarball. An agent that installs it does not have to re-derive any of
+this, and gets a lookup script that answers from the installed payload rather
+than from memory.
 
 ## Resolution order
 

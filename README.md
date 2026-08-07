@@ -49,6 +49,11 @@ A guide is two edits: a file in `content/`, and one entry in the `GUIDES` array
 in `build.mjs`. The guide index, `sitemap.xml` and `llms.txt` all derive from
 that array, so none of them is edited by hand.
 
+`SKILL_INSTALL` in `build.mjs` is the only place the `npx skills add` command is
+written. It reaches the bar under the header on every page, the home hero, the
+root and per-domain `llms.txt`, and each topic's markdown twin — one constant, so
+a drifted copy is not possible.
+
 Guides are prose, but they should never type out a number the payload already
 knows. Write `{{topics}}`, `{{domains}}`, `{{families}}`, `{{verified}}`,
 `{{contract}}`, `{{withExample}}` or an archetype name such as

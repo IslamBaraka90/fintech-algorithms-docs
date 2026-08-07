@@ -207,10 +207,18 @@ const codeBlock = (label, body, lang = null) =>
 
 const NAV = [
   { label: "Quick start", href: "/start/" },
+  { label: "Agent skill", href: "/guides/agent-skill/" },
   { label: "Concepts", href: "/concepts/" },
   { label: "Guides", href: "/guides/" },
   { label: "Reference", href: "/reference/" },
 ];
+
+/*
+ * The one place this command is written. It appears on every page of the site,
+ * in the machine surfaces and in the guide, and a version of it that had drifted
+ * in one of those places would be worse than not printing it at all.
+ */
+const SKILL_INSTALL = "npx skills add IslamBaraka90/Fintech-Algorithms-Library";
 
 /** Filled once the payload is loaded; only used for the search placeholder. */
 let PAYLOAD_COUNT = 0;
@@ -301,6 +309,13 @@ ${analytics()}</head>
     </nav>
   </div>
 </header>
+<div class="skillbar">
+  <div class="inner">
+    <span><strong>Using a coding agent?</strong> Give it the skill:</span>
+    <code>${esc(SKILL_INSTALL)}</code>
+    <a href="${u("/guides/agent-skill/")}">What it does →</a>
+  </div>
+</div>
 ${
   breadcrumbs.length
     ? `<nav class="crumbs" aria-label="Breadcrumb"><div class="inner">${breadcrumbs
@@ -321,10 +336,10 @@ ${rail}
     <p>Generated from the <code>docs.json</code> payload published with the package.
     No example on this site was written by hand — every one is the output of running the code.</p>
     <p><a href="${ARTICLES}">The Fintech Builder</a> · <a href="${u("/start/")}">Quick start</a> · <a href="${u(
-      "/guides/",
-    )}">Guides</a> · <a href="${u("/guides/verification/")}">What “verified” means</a> · <a href="${u(
-      "/llms.txt",
-    )}">llms.txt</a></p>
+      "/guides/agent-skill/",
+    )}">Agent skill</a> · <a href="${u("/guides/")}">Guides</a> · <a href="${u(
+      "/guides/verification/",
+    )}">What “verified” means</a> · <a href="${u("/llms.txt")}">llms.txt</a></p>
   </div>
 </footer>
 <script src="${u("/assets/site.js")}" defer></script>
@@ -365,8 +380,11 @@ function renderHome(payload) {
   and objects in, plain values out — no client to construct, no API key, no provider baked in.</p>
   <div class="cta-row">
     <a class="button" href="${u("/start/")}">Quick start</a>
+    <a class="button" href="${u("/guides/agent-skill/")}">Install the agent skill</a>
     <a class="button ghost" href="${u("/guides/charting/")}">Plot one on a chart</a>
   </div>
+  <p class="hero-install">Writing this code with an agent? One command teaches it all
+  ${counts.topics} — <code>${esc(SKILL_INSTALL)}</code></p>
   <dl class="stats">
     <div><dt>Topics</dt><dd>${counts.topics}</dd></div>
     <div><dt>Domains</dt><dd>${counts.domains}</dd></div>
@@ -428,7 +446,7 @@ ${CONCEPTS.map(
     <p>The package ships an agent skill, so Claude Code, Codex, Cursor and the rest work from the
     real import paths, warm-up counts and verification tiers instead of guessing at them. It
     bundles a lookup script that answers from the payload you have installed, offline.</p>
-    <p><code>npx skills add IslamBaraka90/Fintech-Algorithms-Library</code></p>
+    <p><code>${esc(SKILL_INSTALL)}</code></p>
     <p><a href="${u("/guides/agent-skill/")}">What the skill contains →</a></p>
   </article>
 </section>
@@ -707,6 +725,7 @@ ${t.references
   <ul class="links machine">
     <li><a href="${u(`/${t.path}/index.md`)}">This page as markdown</a></li>
     <li><a href="${u(`/${domainSlug(t)}/llms.txt`)}">${esc(t.taxonomy.domain)} index (llms.txt)</a></li>
+    <li><a href="${u("/guides/agent-skill/")}">Agent skill — read this from your agent</a></li>
   </ul>
 </aside>`;
 
@@ -1131,7 +1150,10 @@ function renderGuide(guide, source, payload) {
 }
 
 function renderGuideIndex() {
+  // The skill leads: it is the one page that changes how every other page here
+  // gets read, and an agent that installs it needs none of the rest by hand.
   const items = GUIDES.filter((g) => g.path !== "start")
+    .sort((a, b) => (a.path === "guides/agent-skill" ? -1 : b.path === "guides/agent-skill" ? 1 : 0))
     .map(
       (g) => `<a class="card" href="${u(`/${g.path}/`)}">
     <h3>${esc(mdTitle(readFileSync(join(ROOT, "content", g.file), "utf8")))}</h3>
@@ -1148,7 +1170,9 @@ function renderGuideIndex() {
     body: `<h1>Guides</h1>
 <p class="lede">Reference pages state the contract for one algorithm. These are the
 cross-cutting things you need once, and then never again.</p>
-<p>New here? Start with the <a href="${u("/start/")}">quick start</a>.</p>
+<p>New here? Start with the <a href="${u("/start/")}">quick start</a>. Working with a coding
+agent? <a href="${u("/guides/agent-skill/")}">Install the skill</a> — it carries everything on
+this page, and looks the contracts up rather than guessing at them.</p>
 <div class="grid">
   ${items}
 </div>`,
@@ -1233,6 +1257,8 @@ function renderLlms(payload, domain = null) {
   const { counts, package: pkg } = payload;
   const common = [
     `Install: npm install fintech-algorithms`,
+    `Agent skill (install it rather than re-deriving this file): ${SKILL_INSTALL}`,
+    `  what it is: ${SITE}/guides/agent-skill/`,
     `Source: fintech-algorithms@${pkg.version} · payload schema ${payload.schemaVersion}`,
     `Reference payload: ${SITE}/reference/payload.json`,
     `Version endpoint: ${SITE}/version.json`,
@@ -1284,7 +1310,6 @@ function renderLlms(payload, domain = null) {
     `Reference payload (published release): https://unpkg.com/fintech-algorithms@${pkg.version}/docs.json`,
     `Quick start: ${SITE}/start/`,
     `Using this from an agent: ${SITE}/guides/ai-agents/`,
-    `Agent skill (install rather than re-derive): npx skills add IslamBaraka90/Fintech-Algorithms-Library — ${SITE}/guides/agent-skill/`,
     ``,
     `## Per-domain indexes`,
     ``,
@@ -1341,6 +1366,7 @@ function renderTopicMarkdown(payload, t) {
       `difficulty ${t.taxonomy.difficulty}/5 · verification **${t.verification.tier}**`,
     ``,
     `Full page: ${SITE}/${t.path}/`,
+    `Agent skill: \`${SKILL_INSTALL}\` — ${SITE}/guides/agent-skill/`,
     ``,
   );
 

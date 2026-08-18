@@ -1339,6 +1339,7 @@ function renderLlms(payload, domain = null) {
     `Agent skill (install it rather than re-deriving this file): ${SKILL_INSTALL}`,
     `  what it is: ${SITE}/guides/agent-skill/`,
     `Source: fintech-algorithms@${pkg.version} · payload schema ${payload.schemaVersion}`,
+    `What changed in each release: ${SITE}/changelog/`,
     `Reference payload: ${SITE}/reference/payload.json`,
     `Version endpoint: ${SITE}/version.json`,
   ];
@@ -1556,8 +1557,6 @@ function renderTopicMarkdown(payload, t) {
     TIER_MEANING[t.verification.tier] ?? TIER_MEANING.contract,
     ``,
     `Both tiers guarantee the signature. Full explanation: ${SITE}/guides/verification/`,
-    ``,
-    `Release notes, including anything that can break a caller: ${SITE}/changelog/`,
     ``,
     `Generated from the docs.json payload shipped inside fintech-algorithms@${payload.package.version}.`,
     `The signature and parameter list are checked against the compiled implementation at build time,`,

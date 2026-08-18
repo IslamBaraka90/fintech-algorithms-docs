@@ -67,6 +67,15 @@ jobs:
           fi
           test -f dist/sitemap.xml && test -f dist/llms.txt
 
+          # The changelog is fetched separately from the payload and is allowed
+          # to fail without taking the build down, so a missing page here is
+          # silent rather than loud. Check it, because the one release where it
+          # matters most is the one that changed something.
+          if [ ! -s dist/changelog/index.html ]; then
+            echo "::error::the changelog page is missing or empty — refusing to deploy"
+            exit 1
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

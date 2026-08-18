@@ -6,14 +6,19 @@ are worth understanding before you trust a number.
 
 ## `verified`
 
-The algorithm's arithmetic is **asserted against the worked example published in
-its article**. The package, the article and the standalone repository agree on
-the numbers, and CI fails if they stop agreeing.
+The algorithm's arithmetic is **replayed and asserted on every build**. If
+someone changes the implementation so it produces a different answer, CI goes
+red.
 
-Concretely: the article works an example through by hand, that example is stored
-as a machine-readable fixture, and the conformance suite replays it on every run.
-If someone changes the implementation so it produces a different answer, the
-build goes red.
+Worth being precise about what that proves, because it is easy to read as more
+than it is. The expected values are computed in the catalog by a Python
+implementation written alongside the TypeScript rather than derived from it — so
+this is **cross-language parity, not an independent third-party figure**. Two
+implementations of one understanding agree.
+
+That catches the failure mode this library actually has: a transcription slip, or
+a generator that transformed something on its way into the package. It would not
+catch both implementations sharing a misreading of the source material.
 
 {{verified}} of {{topics}} topics are in this tier.
 
@@ -42,7 +47,7 @@ sources, and each page says which one it used:
 | **derived** | The same, for thin wrappers a test never calls directly: the entry is invoked with the arguments its shared sibling received. |
 
 **No example on this site was typed by hand.** Every one is the output of running
-the code. What differs between them is whether an independent published source
+the code. What differs between them is whether a second implementation
 says that output is *correct*.
 
 Long inputs and outputs are abbreviated for readability, and the page says how

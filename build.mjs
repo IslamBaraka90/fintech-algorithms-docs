@@ -5,8 +5,8 @@
  * Two inputs, deliberately separate:
  *
  *   docs.json     the generated reference payload, shipped inside the npm
- *                 tarball and fetched from unpkg — 187 topics, their contracts
- *                 and their executed worked examples
+ *                 tarball and read from the package repository — every topic,
+ *                 its contract and its executed worked example
  *   content/*.md  hand-written guides, which are prose and belong in a file
  *                 rather than in a generator
  *
@@ -126,6 +126,44 @@ async function loadPayload() {
     if (attempt < 2) await new Promise((r) => setTimeout(r, 5000));
   }
   throw new Error(`payload fetch failed from every source:\n  ${failures.join("\n  ")}`);
+}
+
+/**
+ * The changelog, from the same place as the payload it describes.
+ *
+ * This follows `--version` for the same reason the payload does: a site built
+ * for a published release that showed `main`'s notes would describe topics that
+ * release does not contain, which is worse than showing none. Pinned builds read
+ * the copy inside that version's tarball; an unpinned build reads `main`.
+ *
+ * A missing changelog is not fatal. The reference is the product here, and a
+ * fetch that fails should not take the site down with it — the page is omitted
+ * and the build says so.
+ */
+async function loadChangelog(version) {
+  const sources = version
+    ? [
+        `https://unpkg.com/fintech-algorithms@${version}/CHANGELOG.md`,
+        `https://cdn.jsdelivr.net/npm/fintech-algorithms@${version}/CHANGELOG.md`,
+      ]
+    : [
+        "https://raw.githubusercontent.com/IslamBaraka90/Fintech-Algorithms-Library/main/CHANGELOG.md",
+        "https://cdn.jsdelivr.net/gh/IslamBaraka90/Fintech-Algorithms-Library@main/CHANGELOG.md",
+      ];
+
+  for (const url of sources) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        console.log(`changelog: ${url}`);
+        return await res.text();
+      }
+    } catch {
+      // fall through to the next source
+    }
+  }
+  console.warn("changelog: unavailable from every source — the page will be skipped");
+  return null;
 }
 
 // ------------------------------------------------------------------ helpers
@@ -339,7 +377,7 @@ ${rail}
       "/guides/agent-skill/",
     )}">Agent skill</a> · <a href="${u("/guides/")}">Guides</a> · <a href="${u(
       "/guides/verification/",
-    )}">What “verified” means</a> · <a href="${u("/llms.txt")}">llms.txt</a></p>
+    )}">What “verified” means</a> · <a href="${u("/changelog/")}">Changelog</a> · <a href="${u("/llms.txt")}">llms.txt</a></p>
   </div>
 </footer>
 <script src="${u("/assets/site.js")}" defer></script>
@@ -374,7 +412,9 @@ function renderHome(payload) {
   const { counts, domains } = payload;
   const body = `
 <section class="hero">
-  <p class="eyebrow">Reference · v${esc(payload.package.version)}</p>
+  <p class="eyebrow">Reference · <a href="${u(
+    `/changelog/#${payload.package.version.replace(/\./g, "-")}`,
+  )}">v${esc(payload.package.version)}</a></p>
   <h1>The algorithms behind market data, corporate actions, indices and breadth</h1>
   <p class="lede">${counts.topics} zero-dependency TypeScript implementations. Plain arrays
   and objects in, plain values out — no client to construct, no API key, no provider baked in.</p>
@@ -1149,6 +1189,45 @@ function renderGuide(guide, source, payload) {
   });
 }
 
+/**
+ * The changelog, rendered as a page.
+ *
+ * The `## 0.13.0 — date` headings become anchors, so a reference page or a
+ * release note can point at one version rather than the top of a long document.
+ * The slug is the version with dots replaced, which makes `/changelog/#0-13-0`
+ * predictable enough to construct without looking it up.
+ */
+function renderChangelog(source, payload) {
+  /*
+   * The markdown renderer already slugifies headings, so a release heading
+   * lands at an id like `0-13-0-2026-08-17`. That works but nobody can guess
+   * it, and a release note wants to link to a version rather than a version and
+   * a date. Add a bare-version anchor immediately before each heading so both
+   * `#0-13-0` and the generated id resolve.
+   */
+  const body = markdown(source.replace(/^#\s+.+$/m, "").trim()).replace(
+    /<h2 id="([^"]*)">/g,
+    (whole, id) => {
+      const version = id.match(/^(\d+-\d+-\d+)/);
+      return version ? `<span class="anchor" id="${version[1]}"></span>${whole}` : whole;
+    },
+  );
+
+  return shell({
+    title: "Changelog — fintech-algorithms",
+    description:
+      "What changed in each release of fintech-algorithms, including anything that can break a caller.",
+    canonical: `${SITE}/changelog/`,
+    breadcrumbs: [{ label: "Reference", href: u("/") }, { label: "Changelog" }],
+    body: `<article class="doc prose"><h1>Changelog</h1>
+<p class="lede">These notes describe <a href="${NPM}">fintech-algorithms@${esc(
+      payload.package.version,
+    )}</a>, the version this site was built from. Anything that can break a caller
+is called out under the release that introduced it.</p>
+${body}</article>`,
+  });
+}
+
 function renderGuideIndex() {
   // The skill leads: it is the one page that changes how every other page here
   // gets read, and an agent that installs it needs none of the rest by hand.
@@ -1478,6 +1557,8 @@ function renderTopicMarkdown(payload, t) {
     ``,
     `Both tiers guarantee the signature. Full explanation: ${SITE}/guides/verification/`,
     ``,
+    `Release notes, including anything that can break a caller: ${SITE}/changelog/`,
+    ``,
     `Generated from the docs.json payload shipped inside fintech-algorithms@${payload.package.version}.`,
     `The signature and parameter list are checked against the compiled implementation at build time,`,
     `so a description that contradicts the code fails the build rather than reaching this file.`,
@@ -1507,6 +1588,7 @@ ${[
   `${SITE}/concepts/`,
   ...CONCEPTS.map((c) => `${SITE}/concepts/${c.slug}/`),
   ...GUIDES.map((g) => `${SITE}/${g.path}/`),
+  `${SITE}/changelog/`,
   `${SITE}/guides/`,
   ...payload.domains.flatMap((d) => {
     const first = payload.topics.find((t) => t.taxonomy.domainId === d.id);
@@ -1542,6 +1624,10 @@ for (const guide of GUIDES) {
   );
 }
 write("guides/index.html", renderGuideIndex());
+
+// Fetched with the payload's version so the notes match the topics on the site.
+const changelogSource = await loadChangelog(arg("--version", null));
+if (changelogSource) write("changelog/index.html", renderChangelog(changelogSource, payload));
 
 for (const concept of CONCEPTS) {
   write(
